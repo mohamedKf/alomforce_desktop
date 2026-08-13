@@ -249,6 +249,13 @@ class LoginView(QWidget):
         # Server address, reachable before signing in. Sits beside the card
         # rather than inside it, so it reads as a machine setting rather than
         # another thing to fill in to sign in.
+        # Creating an account sits next to signing in, not buried: on a fresh
+        # deployment this is the only way in, since the first manager cannot be
+        # created by a manager who does not exist yet.
+        self.register_btn = QPushButton(t('Create account'), objectName='Ghost')
+        self.register_btn.setCursor(Qt.PointingHandCursor)
+        self.register_btn.clicked.connect(self._open_register)
+
         self.server_btn = QPushButton(t('Server'), objectName='Ghost')
         self.server_btn.setCursor(Qt.PointingHandCursor)
         self.server_btn.clicked.connect(self._edit_server)
@@ -261,6 +268,7 @@ class LoginView(QWidget):
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
         top.addWidget(self.server_btn)
+        top.addWidget(self.register_btn)
         top.addStretch()
         top.addWidget(self.language)
 
@@ -317,6 +325,15 @@ class LoginView(QWidget):
             base = base[:-4]
         self.server_hint.setText(t('Server: {url}').replace('{url}', base))
 
+    def _open_register(self):
+        from app.views.register_dialog import RegisterDialog
+
+        dialog = RegisterDialog(self.api, self)
+        if dialog.exec() and dialog.payload:
+            # Registration returns the same token pair as a login, so the app
+            # can go straight in rather than asking for the details again.
+            self.logged_in.emit(dialog.payload)
+
     def _edit_server(self):
         dialog = ServerDialog(self.api, self)
         if dialog.exec():
@@ -335,6 +352,7 @@ class LoginView(QWidget):
         self.pw_label.setText(t('Password'))
         self.submit.setText(t('Sign in'))
         self.server_btn.setText(t('Server'))
+        self.register_btn.setText(t('Create account'))
         self._refresh_server_hint()
 
     def _submit(self):
