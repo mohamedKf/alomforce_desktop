@@ -7,11 +7,17 @@ direction.
 
 One field for the identifier: staff type an ID number, clients type a phone.
 The backend resolves either, so the desktop never has to ask which.
+
+The server address is reachable from here as well as from Settings. Settings
+sits behind the login, so a machine pointed at the wrong server could otherwise
+never be corrected from inside the app -- you would have to sign in to fix the
+thing preventing you from signing in.
 """
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -26,6 +32,95 @@ from PySide6.QtGui import QColor
 
 from app import i18n
 from app.i18n import t
+
+
+class ServerDialog(QDialog):
+    """Edit the backend address without being signed in.
+
+    Deliberately the same three steps Settings uses -- probe, apply to the live
+    client, persist to QSettings -- so the two entry points cannot drift into
+    saving the address differently.
+    """
+
+    def __init__(self, api, parent=None):
+        super().__init__(parent)
+        self.api = api
+        self.setWindowTitle(t('Server connection'))
+        self.setMinimumWidth(430)
+
+        hint = QLabel(
+            t('Where this computer finds the AlomForce server.'),
+            objectName='CardHint',
+        )
+        hint.setWordWrap(True)
+
+        # Show the plain address. '/api' is an implementation detail of the
+        # client, and _save() re-appends it, so putting it in the box only
+        # invites someone to paste a second one after it.
+        current = self.api.base_url.rstrip('/')
+        if current.endswith('/api'):
+            current = current[:-4]
+        self.address = QLineEdit(current)
+        self.address.setPlaceholderText('https://alomforce-production.up.railway.app')
+        self.address.setMinimumHeight(38)
+        self.address.setClearButtonEnabled(True)
+
+        self.status = QLabel('', objectName='CardHint')
+        self.status.setWordWrap(True)
+
+        self.save_btn = QPushButton(t('Test and save'), objectName='PrimaryButton')
+        self.save_btn.setMinimumHeight(38)
+        self.save_btn.setCursor(Qt.PointingHandCursor)
+        self.save_btn.clicked.connect(self._save)
+
+        cancel = QPushButton(t('Cancel'), objectName='Ghost')
+        cancel.setMinimumHeight(38)
+        cancel.setCursor(Qt.PointingHandCursor)
+        cancel.clicked.connect(self.reject)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        buttons.addWidget(cancel)
+        buttons.addWidget(self.save_btn)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(26, 24, 26, 22)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel(t('Backend address'), objectName='FieldLabel'))
+        layout.addWidget(self.address)
+        layout.addWidget(hint)
+        layout.addWidget(self.status)
+        layout.addSpacing(6)
+        layout.addLayout(buttons)
+
+        self.address.returnPressed.connect(self._save)
+
+    def _save(self):
+        from app.api import ApiClient
+
+        url = self.address.text().strip()
+        if not url:
+            self.status.setText(t('Enter a server address.'))
+            return
+
+        self.save_btn.setEnabled(False)
+        self.save_btn.setText(t('Testing…'))
+        # Probe blocks the UI thread, but its timeout is 8s and the dialog has
+        # nothing else to do while it waits -- same trade-off Settings makes.
+        ok = ApiClient.probe(url)
+        self.save_btn.setEnabled(True)
+        self.save_btn.setText(t('Test and save'))
+
+        if not ok:
+            self.status.setText(t("Couldn't reach that server."))
+            return
+
+        base = url.rstrip('/')
+        if not base.endswith('/api'):
+            base += '/api'
+        self.api.set_base_url(base)
+        QSettings('AlomForce', 'AlomForce').setValue('server_url', base)
+        self.accept()
 
 
 class LoginView(QWidget):
@@ -151,8 +246,21 @@ class LoginView(QWidget):
             lambda: self.language_changed.emit(self.language.currentData())
         )
 
+        # Server address, reachable before signing in. Sits beside the card
+        # rather than inside it, so it reads as a machine setting rather than
+        # another thing to fill in to sign in.
+        self.server_btn = QPushButton(t('Server'), objectName='Ghost')
+        self.server_btn.setCursor(Qt.PointingHandCursor)
+        self.server_btn.clicked.connect(self._edit_server)
+
+        self.server_hint = QLabel('', objectName='CardHint')
+        self.server_hint.setAlignment(Qt.AlignCenter)
+        self.server_hint.setWordWrap(True)
+        self._refresh_server_hint()
+
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
+        top.addWidget(self.server_btn)
         top.addStretch()
         top.addWidget(self.language)
 
@@ -165,6 +273,8 @@ class LoginView(QWidget):
         row.addWidget(card)
         row.addStretch()
         outer.addLayout(row)
+        outer.addSpacing(12)
+        outer.addWidget(self.server_hint)
         outer.addStretch()
 
         self.submit.clicked.connect(self._submit)
@@ -196,6 +306,23 @@ class LoginView(QWidget):
     def _toggle_reveal(self, shown):
         self.password.setEchoMode(QLineEdit.Normal if shown else QLineEdit.Password)
 
+    def _refresh_server_hint(self):
+        """Show which server a sign-in would go to.
+
+        Worth the line of screen: 'wrong password' and 'right password, wrong
+        server' look identical from here otherwise.
+        """
+        base = self.api.base_url.rstrip('/')
+        if base.endswith('/api'):
+            base = base[:-4]
+        self.server_hint.setText(t('Server: {url}').replace('{url}', base))
+
+    def _edit_server(self):
+        dialog = ServerDialog(self.api, self)
+        if dialog.exec():
+            self._refresh_server_hint()
+            self.error.hide()
+
     def retranslate(self):
         self._tagline.setText(
             t('Aluminium profiles — stock, orders and delivery, in one place.')
@@ -207,6 +334,8 @@ class LoginView(QWidget):
         self.identifier.setPlaceholderText(t('e.g. 012345678'))
         self.pw_label.setText(t('Password'))
         self.submit.setText(t('Sign in'))
+        self.server_btn.setText(t('Server'))
+        self._refresh_server_hint()
 
     def _submit(self):
         identifier = self.identifier.text().strip()

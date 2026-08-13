@@ -222,6 +222,26 @@ class SettingsView(QWidget):
                 'For legal invoices and allocation (hakptsa) numbers. '
                 'Connected later.', gi_body))
 
+            # -- Mapbox (the map on the Deliveries screen) --
+            # Shown in full rather than masked: a Mapbox pk. token is designed
+            # to be embedded in client code, so hiding it would only make it
+            # harder to check which token the map is actually using.
+            self.mapbox = Field('Mapbox public token')
+            self.mapbox.input.setPlaceholderText('pk.…')
+            self.mapbox_status = QLabel('', objectName='CardHint')
+            self.mapbox_status.setWordWrap(True)
+            self.mapbox_btn = QPushButton(t('Save Mapbox token'))
+            self.mapbox_btn.clicked.connect(self._save_mapbox)
+            mapbox_body = QVBoxLayout()
+            mapbox_body.setSpacing(8)
+            mapbox_body.addWidget(self.mapbox)
+            mapbox_body.addWidget(self.mapbox_status)
+            mapbox_body.addLayout(self._action_row(self.mapbox_btn))
+            content.addWidget(self._card(
+                '🗺️', 'Map (Mapbox)',
+                'Draws the client map. A MAPBOX_TOKEN environment variable '
+                'overrides whatever is saved here.', mapbox_body))
+
         content.addStretch()
 
         inner = QWidget()
@@ -564,6 +584,16 @@ class SettingsView(QWidget):
             env if data.get('greeninvoice_from_env')
             else (t('Connected.') if data.get('greeninvoice_ready')
                   else t('Not configured.')))
+        # Show the token actually in force, environment included, so the field
+        # cannot claim one thing while the map uses another.
+        self.mapbox.set_value(data.get('mapbox_effective') or '')
+        from_env = data.get('mapbox_from_env')
+        self.mapbox.input.setReadOnly(bool(from_env))
+        self.mapbox_btn.setEnabled(not from_env)
+        self.mapbox_status.setText(
+            env if from_env
+            else (t('Map token set.') if data.get('mapbox_effective')
+                  else t('Not configured — the map will be blank.')))
 
     def _patch_settings(self, data, button, label, status):
         button.setEnabled(False)
@@ -623,6 +653,11 @@ class SettingsView(QWidget):
         self._patch_settings(data, self.gi_btn, t('Save Green Invoice'),
                              self.gi_status)
         self.gi_secret.set_value('')
+
+    def _save_mapbox(self):
+        self._patch_settings({'mapbox_token': self.mapbox.value()},
+                             self.mapbox_btn, t('Save Mapbox token'),
+                             self.mapbox_status)
 
     def _save_cloudinary(self):
         data = {
