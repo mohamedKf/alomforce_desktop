@@ -56,12 +56,17 @@ class ClientDialog(QDialog):
         self.f_city = Field('City')
         self.f_postal = Field('Postal code')
         self.f_delivery = Field('Delivery address')
+        # A link shared out of any map app. The server reads the point from it
+        # and moves the pin -- but only when the link itself changed, so
+        # dragging the pin afterwards is not undone by the next save.
+        self.f_maplink = Field('Map link')
         self.f_notes = Field('Notes', kind='text')
 
         self.fields = [self.f_name, self.f_type, self.f_legal, self.f_tax,
                        self.f_regnum, self.f_first, self.f_last, self.f_phone,
                        self.f_email, self.f_website, self.f_address, self.f_city,
-                       self.f_postal, self.f_delivery, self.f_notes]
+                       self.f_postal, self.f_delivery, self.f_maplink,
+                       self.f_notes]
         self.error_map = {
             'name': self.f_name, 'tax_id': self.f_tax, 'phone': self.f_phone,
             'email': self.f_email, 'website': self.f_website,
@@ -99,6 +104,7 @@ class ClientDialog(QDialog):
         form.addWidget(self.f_address)
         form.addLayout(field_row(self.f_city, self.f_postal))
         form.addWidget(self.f_delivery)
+        form.addWidget(self.f_maplink)
         form.addWidget(self.f_notes)
         form.addStretch()
 
@@ -180,6 +186,7 @@ class ClientDialog(QDialog):
         self.f_city.set_value(c.get('city'))
         self.f_postal.set_value(c.get('postal_code'))
         self.f_delivery.set_value(c.get('delivery_address'))
+        self.f_maplink.set_value(c.get('location_url'))
         self.f_notes.set_value(c.get('notes'))
         if c.get('latitude') is not None and c.get('longitude') is not None:
             self._set_coords(float(c['latitude']), float(c['longitude']), center=True)
@@ -242,6 +249,7 @@ class ClientDialog(QDialog):
             'city': self.f_city.value(),
             'postal_code': self.f_postal.value(),
             'delivery_address': self.f_delivery.value(),
+            'location_url': self.f_maplink.value(),
             'notes': self.f_notes.value(),
             'latitude': str(self.lat) if self.lat is not None else None,
             'longitude': str(self.lng) if self.lng is not None else None,
