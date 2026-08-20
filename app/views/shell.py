@@ -103,6 +103,14 @@ class Shell(QWidget):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
+        # The bell sits with the user's name at the foot of the sidebar --
+        # the part of the chrome that is about *you* rather than about the
+        # page you are on.
+        from app.views.notifications import BellButton, NotificationWatcher
+        self.bell = BellButton()
+        self.bell.opened.connect(self._open_notifications)
+        self._watcher = NotificationWatcher(self.api, self.bell)
+
         self.user_name = QLabel('', objectName='UserName')
         self.user_role = QLabel('', objectName='UserRole')
         self.sign_out = QPushButton(t('Sign out'), objectName='SignOut')
@@ -116,9 +124,15 @@ class Shell(QWidget):
         side.addLayout(self.nav_layout)
         side.addStretch()
         side.addSpacing(10)
+        identity = QHBoxLayout()
+        identity.setContentsMargins(20, 0, 14, 0)
+        names = QVBoxLayout()
+        names.setSpacing(0)
         for widget in (self.user_name, self.user_role):
-            widget.setContentsMargins(20, 0, 20, 0)
-            side.addWidget(widget)
+            names.addWidget(widget)
+        identity.addLayout(names, 1)
+        identity.addWidget(self.bell, alignment=Qt.AlignVCenter)
+        side.addLayout(identity)
         side.addSpacing(10)
         wrap = QHBoxLayout()
         wrap.setContentsMargins(14, 0, 14, 0)
@@ -132,6 +146,16 @@ class Shell(QWidget):
         layout.setSpacing(0)
         layout.addWidget(self.sidebar)
         layout.addWidget(self.stack, 1)
+
+    def _open_notifications(self):
+        from app.views.notifications import NotificationsPanel
+
+        panel = NotificationsPanel(self.api, self)
+        panel.read_changed.connect(self._watcher.refresh)
+        panel.exec()
+        # Opening the list is not the same as reading it, so the badge is
+        # refreshed rather than assumed to be zero.
+        self._watcher.refresh()
 
     # -- session ---------------------------------------------------------
 
