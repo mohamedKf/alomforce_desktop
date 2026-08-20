@@ -660,6 +660,10 @@ TRANSLATIONS = {
         'offcut': 'עודף',
         'm': 'מ׳',
         'mm': 'מ"מ',
+        'Earlier': 'קודמות',
+        'Mark as read': 'סימון כנקרא',
+        'Nothing unread.': 'אין התראות שלא נקראו.',
+        'Unread': 'לא נקראו',
     },
     'ar': {
         'Basis': 'الأساس',
@@ -1301,6 +1305,10 @@ TRANSLATIONS = {
         'offcut': 'فائض',
         'm': 'م',
         'mm': 'ملم',
+        'Earlier': 'سابقة',
+        'Mark as read': 'وضع علامة مقروء',
+        'Nothing unread.': 'لا توجد إشعارات غير مقروءة.',
+        'Unread': 'غير مقروءة',
     },
 }
 

@@ -54,6 +54,19 @@ QLabel#BrandSub {{
     font-size: 11px;
     padding: 0 20px 18px 20px;
 }}
+
+/* The notification bell, top of the sidebar beside the wordmark. Flat until
+   pointed at, so an empty bell is quiet and a badged one is the only thing
+   drawing the eye up there. */
+QPushButton#Bell {{
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+}}
+QPushButton#Bell:hover  {{ background: rgba(255, 255, 255, 0.10); }}
+QPushButton#Bell:pressed {{ background: rgba(255, 255, 255, 0.16); }}
+
 QPushButton#NavButton {{
     color: #C3CBD4;
     background: transparent;
@@ -333,6 +346,18 @@ QFrame#SettingsCard {{
     border: 1px solid {LINE};
     border-radius: 12px;
 }}
+/* A notification in the list. Unread is tinted rather than given a side
+   border, so it looks the same in Hebrew as in English. */
+QFrame#NotificationCard {{
+    background: {SURFACE};
+    border: 1px solid {LINE};
+    border-radius: 10px;
+}}
+QFrame#NotificationCard[unread="true"] {{
+    background: {ACCENT_LIGHT};
+    border-color: #CFE0EA;
+}}
+
 QLabel#CardTitle {{ color: {INK}; font-size: 15px; font-weight: 700; }}
 QLabel#CardHint  {{ color: {INK_MUTED}; font-size: 12.5px; }}
 QLabel#CardIcon  {{ font-size: 17px; }}

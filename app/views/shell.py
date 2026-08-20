@@ -103,9 +103,10 @@ class Shell(QWidget):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
-        # The bell sits with the user's name at the foot of the sidebar --
-        # the part of the chrome that is about *you* rather than about the
-        # page you are on.
+        # Top of the sidebar, beside the wordmark. It used to sit at the very
+        # bottom next to the sign-out button, which is the last place anyone
+        # looks and the easiest to miss -- a badge is only useful where the eye
+        # already goes.
         from app.views.notifications import BellButton, NotificationWatcher
         self.bell = BellButton()
         self.bell.opened.connect(self._open_notifications)
@@ -116,11 +117,25 @@ class Shell(QWidget):
         self.sign_out = QPushButton(t('Sign out'), objectName='SignOut')
         self.sign_out.clicked.connect(self.signed_out.emit)
 
+        # The wordmark and the bell share the top row; the brand labels carry
+        # their own padding, so the bell is nudged to sit on the wordmark line.
+        wordmark = QVBoxLayout()
+        wordmark.setSpacing(0)
+        wordmark.addWidget(brand)
+        wordmark.addWidget(self.brand_sub)
+        masthead = QHBoxLayout()
+        # Symmetric: a layout reverses widget order in RTL but keeps its
+        # margins on the same physical sides, so a one-sided margin would put
+        # the bell flush against the window edge in Hebrew. The wordmark keeps
+        # its own padding, so this only affects the bell.
+        masthead.setContentsMargins(14, 18, 14, 0)
+        masthead.addLayout(wordmark, 1)
+        masthead.addWidget(self.bell, alignment=Qt.AlignTop)
+
         side = QVBoxLayout(self.sidebar)
         side.setContentsMargins(0, 0, 0, 16)
         side.setSpacing(0)
-        side.addWidget(brand)
-        side.addWidget(self.brand_sub)
+        side.addLayout(masthead)
         side.addLayout(self.nav_layout)
         side.addStretch()
         side.addSpacing(10)
@@ -131,7 +146,6 @@ class Shell(QWidget):
         for widget in (self.user_name, self.user_role):
             names.addWidget(widget)
         identity.addLayout(names, 1)
-        identity.addWidget(self.bell, alignment=Qt.AlignVCenter)
         side.addLayout(identity)
         side.addSpacing(10)
         wrap = QHBoxLayout()
