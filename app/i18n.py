@@ -641,6 +641,13 @@ TRANSLATIONS = {
         'e.g. 012345678': 'לדוגמה 012345678',
         'Coming soon': 'בקרוב',
         'This section is not built yet.': 'המסך הזה עדיין לא נבנה.',
+        'Aluminium profiles': 'פרופילי אלומיניום',
+        'Calculate': 'חישוב',
+        'Connection, language, company and image storage.': 'חיבור, שפה, פרטי החברה ואחסון תמונות.',
+        'Enter a valid phone number.': 'הזינו מספר טלפון תקין.',
+        'Profile number, e.g. 04901': 'מספר פרופיל, לדוגמה 04901',
+        'Where this computer finds the AlomForce server.': 'היכן מחשב זה מוצא את שרת AlomForce.',
+        'kg': 'ק"ג',
     },
     'ar': {
         'Basis': 'الأساس',
@@ -1263,6 +1270,13 @@ TRANSLATIONS = {
         'e.g. 012345678': 'مثال 012345678',
         'Coming soon': 'قريباً',
         'This section is not built yet.': 'هذه الشاشة غير جاهزة بعد.',
+        'Aluminium profiles': 'مقاطع الألمنيوم',
+        'Calculate': 'احسب',
+        'Connection, language, company and image storage.': 'الاتصال واللغة وبيانات الشركة وتخزين الصور.',
+        'Enter a valid phone number.': 'أدخل رقم هاتف صالحًا.',
+        'Profile number, e.g. 04901': 'رقم المقطع، مثال 04901',
+        'Where this computer finds the AlomForce server.': 'أين يجد هذا الحاسوب خادم AlomForce.',
+        'kg': 'كغ',
     },
 }
 

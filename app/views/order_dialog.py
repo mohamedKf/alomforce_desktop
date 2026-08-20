@@ -154,7 +154,7 @@ class OrderDialog(QDialog):
         self.lbl_subtotal = QLabel('₪ 0.00')
         self.lbl_discount = QLabel('—')
         self.lbl_vat = QLabel('₪ 0.00')
-        self.lbl_weight = QLabel('0 kg')
+        self.lbl_weight = QLabel(f'0 {t("kg")}')
         self.lbl_total = QLabel('₪ 0.00', objectName='SectionTitle')
         totals = QVBoxLayout()
         totals.setSpacing(3)
@@ -307,7 +307,7 @@ class OrderDialog(QDialog):
         self.lbl_discount.setText(
             f'-₪ {discount:,.2f} ({self.discount_percent:g}%)' if discount else '—')
         self.lbl_vat.setText(f'₪ {vat:,.2f} ({VAT_PERCENT:g}%)')
-        self.lbl_weight.setText(f'{weight:g} kg')
+        self.lbl_weight.setText(f'{weight:g} {t("kg")}')
         self.lbl_total.setText(f'₪ {total:,.2f}')
 
     # -- load existing ---------------------------------------------------

@@ -96,7 +96,7 @@ class Shell(QWidget):
         self.sidebar.setFixedWidth(216)
 
         brand = QLabel('AlomForce', objectName='Brand')
-        self.brand_sub = QLabel('Aluminium profiles', objectName='BrandSub')
+        self.brand_sub = QLabel(t('Aluminium profiles'), objectName='BrandSub')
 
         self.nav_layout = QVBoxLayout()
         self.nav_layout.setSpacing(0)
