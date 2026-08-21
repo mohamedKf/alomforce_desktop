@@ -22,6 +22,7 @@ from app.views.clients import ClientsView
 from app.views.dashboard import DashboardView
 from app.views.mapview import MapView
 from app.views.invoices import InvoicesView
+from app.views.deliveries import DeliveriesView
 from app.views.orders import OrdersView
 from app.views.requests import RequestsView
 from app.views.salary import SalaryView
@@ -237,6 +238,10 @@ class Shell(QWidget):
             return InvoicesView(self.api, self.session)
         if key == 'requests':
             return RequestsView(self.api, self.session)
+        if key == 'deliveries':
+            view = DeliveriesView(self.api, self.session)
+            view.reload()
+            return view
         if key == 'salary':
             return SalaryView(self.api, self.session)
         if key == 'settings':
