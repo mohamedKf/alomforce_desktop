@@ -673,6 +673,7 @@ TRANSLATIONS = {
         'Search deliveries': 'חיפוש משלוחים',
         'Signed by': 'נחתם על ידי',
         'delivered': 'נמסרו',
+        'Date': 'תאריך',
     },
     'ar': {
         'Basis': 'الأساس',
@@ -1327,6 +1328,7 @@ TRANSLATIONS = {
         'Search deliveries': 'البحث في التسليمات',
         'Signed by': 'وقّعه',
         'delivered': 'سُلّمت',
+        'Date': 'التاريخ',
     },
 }
 

@@ -283,6 +283,9 @@ class Shell(QWidget):
 
     def retranslate(self):
         self.sign_out.setText(t('Sign out'))
+        # Built once with the startup language, so without this the tagline
+        # under the wordmark stayed in whatever language the app opened in.
+        self.brand_sub.setText(t('Aluminium profiles'))
         for key, label, _roles in SECTIONS:
             if key in self.buttons:
                 self.buttons[key].setText(t(label))
