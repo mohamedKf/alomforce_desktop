@@ -17,7 +17,11 @@ from urllib.parse import urlencode
 import requests
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 
-DEFAULT_BASE_URL = 'http://127.0.0.1:8000/api/'
+# No baked-in server: each shop is given a connection link by the provider and
+# the app is useless without it, so first run starts unconfigured and prompts
+# for the address (typed in, or scanned from the desktop QR) rather than
+# silently pointing at a wrong host.
+DEFAULT_BASE_URL = ''
 TIMEOUT = 20
 
 
@@ -218,7 +222,8 @@ class ApiClient(QObject):
     def __init__(self, session, base_url=DEFAULT_BASE_URL):
         super().__init__()
         self.session = session
-        self.base_url = base_url.rstrip('/') + '/'
+        # Empty until a server link is set; '/'-normalise only a real address.
+        self.base_url = (base_url.rstrip('/') + '/') if base_url else ''
         self.server_error = None    # set if the base URL couldn't be reached
         self.pool = QThreadPool.globalInstance()
         self._http = requests.Session()
@@ -294,7 +299,11 @@ class ApiClient(QObject):
 
     def set_base_url(self, url):
         """Point the client at a different backend (applied to the next call)."""
-        self.base_url = url.rstrip('/') + '/'
+        self.base_url = (url.rstrip('/') + '/') if url else ''
+
+    def is_configured(self):
+        """True once a real http(s) server link has been set."""
+        return self.base_url.startswith(('http://', 'https://'))
 
     @staticmethod
     def probe(url):

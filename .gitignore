@@ -2,3 +2,7 @@
 .idea/
 __pycache__/
 *.py[cod]
+# PyInstaller build output
+build/
+dist/
+*.iconset/

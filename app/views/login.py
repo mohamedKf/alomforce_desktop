@@ -320,10 +320,18 @@ class LoginView(QWidget):
         Worth the line of screen: 'wrong password' and 'right password, wrong
         server' look identical from here otherwise.
         """
+        if not self.api.is_configured():
+            self.server_hint.setText(
+                t('No server set — click Server and enter the link you were given.'))
+            return
         base = self.api.base_url.rstrip('/')
         if base.endswith('/api'):
             base = base[:-4]
         self.server_hint.setText(t('Server: {url}').replace('{url}', base))
+
+    def prompt_for_server(self):
+        """Open the server dialog (used on first run when none is set)."""
+        self._edit_server()
 
     def _open_register(self):
         from app.views.register_dialog import RegisterDialog

@@ -12,6 +12,7 @@ import os
 import sys
 
 from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 
 from app import i18n, theme
@@ -22,6 +23,17 @@ from app.views.login import LoginView
 from app.views.shell import Shell
 
 API_BASE_URL = os.environ.get('ALOMFORCE_API', DEFAULT_BASE_URL)
+
+
+def resource_path(rel):
+    """Absolute path to a bundled resource, in dev and in a PyInstaller build.
+
+    PyInstaller unpacks data files under sys._MEIPASS; in dev they sit next to
+    this file. Using this keeps the app runnable from wherever the built binary
+    is placed, without any hardcoded install location.
+    """
+    base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, rel)
 
 
 class MainWindow(QMainWindow):
@@ -98,6 +110,12 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.login)
         self.login.focus_first_field()
 
+    def ensure_server_configured(self):
+        """On first run there is no server link yet; prompt for it up front so
+        the sign-in screen isn't a dead end. Called once after the window shows."""
+        if not self.api.is_configured() and self.stack.currentWidget() is self.login:
+            self.login.prompt_for_server()
+
     # -- i18n ------------------------------------------------------------
 
     def _preferred_language(self):
@@ -129,10 +147,17 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName('AlomForce')
     app.setOrganizationName('AlomForce')
+    icon = QIcon(resource_path(os.path.join('app', 'assets', 'alomforce.png')))
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     app.setStyleSheet(theme.STYLESHEET)
 
     window = MainWindow()
+    if not icon.isNull():
+        window.setWindowIcon(icon)
     window.show()
+    # First run has no server link yet — prompt for it after the window is up.
+    window.ensure_server_configured()
     sys.exit(app.exec())
 
 
