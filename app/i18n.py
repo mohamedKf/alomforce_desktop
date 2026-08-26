@@ -674,6 +674,7 @@ TRANSLATIONS = {
         'Signed by': 'נחתם על ידי',
         'delivered': 'נמסרו',
         'Date': 'תאריך',
+        'Locations': 'מיקומים',
     },
     'ar': {
         'Basis': 'الأساس',
@@ -1329,6 +1330,7 @@ TRANSLATIONS = {
         'Signed by': 'وقّعه',
         'delivered': 'سُلّمت',
         'Date': 'التاريخ',
+        'Locations': 'المواقع',
     },
 }
 
