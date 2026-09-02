@@ -26,11 +26,15 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from app.i18n import t
+from app.views.order_attachments import OrderAttachments
+from app.views.order_payments import OrderPayments
+from app.views.order_pricing import OrderPricing
 from app.views.catalog import CatalogView
 
 # The order lifecycle, in flow order (matches the backend OrderStatus).
@@ -183,10 +187,32 @@ class OrderDialog(QDialog):
         right_w.setFixedWidth(420)
         right_w.setLayout(right)
 
+        products = QWidget()
+        products_row = QHBoxLayout(products)
+        products_row.setContentsMargins(0, 0, 0, 0)
+        products_row.setSpacing(18)
+        products_row.addWidget(self.catalog, 1)
+        products_row.addWidget(right_w)
+
+        # A job is several questions asked at different times by different
+        # people: what was ordered, what it costs, what has been paid, and
+        # what paperwork came with it. Tabs rather than one crowded column.
+        self.pricing = OrderPricing(self.api, self.order_id)
+        self.payments = OrderPayments(self.api, self.order_id)
+        self.attachments = OrderAttachments(self.api, self.order_id)
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(products, t('Order'))
+        self.tabs.addTab(self.pricing, t('Pricing'))
+        self.tabs.addTab(self.payments, t('Payments'))
+        self.tabs.addTab(self.attachments, t('Documents'))
+        # Lines can be added on the first tab while pricing is open behind it,
+        # so it re-reads on the way in rather than showing a stale sheet.
+        self.tabs.currentChanged.connect(self._tab_changed)
+
         body = QHBoxLayout()
         body.setSpacing(18)
-        body.addWidget(self.catalog, 1)
-        body.addWidget(right_w)
+        body.addWidget(self.tabs)
 
         self.error = QLabel('', objectName='Error')
         self.error.setWordWrap(True)
@@ -368,6 +394,10 @@ class OrderDialog(QDialog):
             self.api.post('orders/', data,
                           on_ok=self._on_saved, on_error=self._on_error)
 
+    def _tab_changed(self, index):
+        if self.tabs.widget(index) is self.pricing:
+            self.pricing.reload()
+
     def _on_saved(self, order):
         self.order = order
         self.order_id = order.get('id')
@@ -377,6 +407,10 @@ class OrderDialog(QDialog):
         self.save_btn.setText(t('Save order'))
         self._sync_pdf_buttons()
         self._refresh_invoicing()
+        # A new order only gets an id here, and there is nothing to price,
+        # pay against or attach a file to before that.
+        for panel in (self.pricing, self.payments, self.attachments):
+            panel.set_order(self.order_id)
 
     def _on_error(self, error):
         self.save_btn.setEnabled(True)
