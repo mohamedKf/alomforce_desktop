@@ -136,6 +136,39 @@ QSpinBox::down-button, QDoubleSpinBox::down-button, QAbstractSpinBox::down-butto
 /* Radio buttons and checkboxes — keep their labels readable in dark mode. */
 QRadioButton, QCheckBox {{ color: {INK}; font-size: 13px; spacing: 6px; }}
 
+/* Tick boxes. With no rule of their own they fall back to the platform's,
+   which against these styled surfaces draws something all but invisible --
+   and a checkable row whose tick cannot be seen is a row nobody can tell the
+   state of. Filled rather than ticked: Qt will not load a data: URI for the
+   mark, and a solid accent square against an empty white one reads clearly. */
+QCheckBox::indicator,
+QTableWidget::indicator, QTableView::indicator,
+QTreeWidget::indicator, QTreeView::indicator,
+QListWidget::indicator {{
+    width: 15px;
+    height: 15px;
+    border: 1px solid {LINE};
+    border-radius: 3px;
+    background: {SURFACE};
+}}
+QCheckBox::indicator:hover,
+QTableWidget::indicator:hover, QTableView::indicator:hover,
+QTreeWidget::indicator:hover, QTreeView::indicator:hover {{
+    border-color: {ACCENT};
+}}
+QCheckBox::indicator:checked,
+QTableWidget::indicator:checked, QTableView::indicator:checked,
+QTreeWidget::indicator:checked, QTreeView::indicator:checked,
+QListWidget::indicator:checked {{
+    background: {ACCENT};
+    border-color: {ACCENT};
+}}
+QCheckBox::indicator:disabled,
+QTableWidget::indicator:disabled, QTableView::indicator:disabled {{
+    background: {CANVAS};
+    border-color: {LINE};
+}}
+
 /* Calendar popup for the date picker. */
 QCalendarWidget QWidget {{ background: {SURFACE}; color: {INK}; }}
 QCalendarWidget QAbstractItemView {{

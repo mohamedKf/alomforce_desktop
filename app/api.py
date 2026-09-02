@@ -355,13 +355,29 @@ class ApiClient(QObject):
 
     # -- sync (runs on the worker thread) ---------------------------------
 
+    def _headers(self, accept='application/json', access=None):
+        """The headers every call carries.
+
+        Accept-Language is the one that matters. Django's LocaleMiddleware is
+        already installed on the server, so a status name, a validation
+        message or a document heading comes back in whatever language is
+        asked for -- and without this header that is English, whatever the
+        person is reading the app in. Every "Confirmed" in the middle of a
+        Hebrew screen was this line missing.
+        """
+        from app import i18n
+
+        headers = {'Accept': accept,
+                   'Accept-Language': i18n.get_language() or 'he'}
+        if access:
+            headers['Authorization'] = f'Bearer {access}'
+        return headers
+
     def request_sync(self, method, path, params=None, data=None,
                      auth=True, _retry=True):
         url = self.base_url + path.lstrip('/')
         used_access = self.session.access
-        headers = {'Accept': 'application/json'}
-        if auth and used_access:
-            headers['Authorization'] = f'Bearer {used_access}'
+        headers = self._headers(access=used_access if auth else None)
 
         try:
             response = self._http.request(
@@ -401,9 +417,7 @@ class ApiClient(QObject):
                     method='POST'):
         url = self.base_url + path.lstrip('/')
         used_access = self.session.access
-        headers = {'Accept': 'application/json'}
-        if used_access:
-            headers['Authorization'] = f'Bearer {used_access}'
+        headers = self._headers(access=used_access)
 
         try:
             with open(file_path, 'rb') as fh:
@@ -460,7 +474,7 @@ class ApiClient(QObject):
 
         url = self.base_url + path.lstrip('/')
         used_access = self.session.access
-        headers = {'Accept': 'application/pdf'}
+        headers = self._headers(accept='application/pdf')
         if used_access:
             headers['Authorization'] = f'Bearer {used_access}'
         try:
