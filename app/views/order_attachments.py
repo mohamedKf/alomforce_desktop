@@ -41,8 +41,7 @@ from PySide6.QtWidgets import (
 
 from app.i18n import t
 
-KINDS = [('drawing', 'Drawing'), ('cutting_list', 'Cutting list'),
-         ('other', 'Other')]
+KINDS = [('drawing', 'Drawing'), ('other', 'Other')]
 FILTER = 'Documents (*.pdf *.png *.jpg *.jpeg *.webp *.heic)'
 
 # The order the sections read in, and what each is called. Anything the server
@@ -50,7 +49,6 @@ FILTER = 'Documents (*.pdf *.png *.jpg *.jpeg *.webp *.heic)'
 SECTIONS = [
     ('generated', 'Made by AlomForce'),
     ('drawing', 'Drawings'),
-    ('cutting_list', 'Cutting lists'),
     ('other', 'Other documents'),
 ]
 
