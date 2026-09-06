@@ -204,9 +204,16 @@ class OrderPricing(QWidget):
         self._recalculate()
 
     def _fill_row(self, row, line):
-        name = f"{line.get('profile') or ''} · {line.get('name') or ''}"
-        if line.get('series'):
-            name += f"   ({line['series']})"
+        # Led by what the workshop calls it -- the series number and what the
+        # part does -- with the catalogue code after it. A fitter asks for
+        # "1700 צד"; 05980 is what is printed on the rack label.
+        head = '  '.join(part for part in (line.get('series_code'),
+                                           line.get('name')) if part)
+        name = f"{head or line.get('profile') or ''}"
+        tail = '  ·  '.join(part for part in (line.get('profile'),
+                                              line.get('series')) if part)
+        if tail:
+            name += f"      {tail}"
         # Priced by the kilo, so the quantity that matters is the weight.
         quantity = _num(line.get('weight_kg'))
         suggested = line.get('suggested_price')
