@@ -584,6 +584,9 @@ TRANSLATIONS = {
             'הזן מטרים נדרשים, או מספר מוטות.',
         # Catalog
         'Search profiles': 'חיפוש פרופילים',
+        'Manufacturer': 'יצרן',
+        'All manufacturers': 'כל היצרנים',
+        'Catalogue data © {name}': 'נתוני הקטלוג © {name}',
         'All series': 'כל הסדרות',
         'All roles': 'כל הסוגים',
         'All families': 'כל המשפחות',
@@ -738,6 +741,10 @@ TRANSLATIONS = {
         'delivered': 'נמסרו',
         'Date': 'תאריך',
         'Locations': 'מיקומים',
+        'Send by WhatsApp': 'שלח בוואטסאפ',
+        'The server sent no WhatsApp link.': 'השרת לא החזיר קישור וואטסאפ.',
+        'An error was reported': 'דווחה שגיאה',
+        'Something went wrong. The error has been reported and the app can carry on.': 'משהו השתבש. השגיאה דווחה וניתן להמשיך לעבוד.',
     },
     'ar': {
         'A post-dated cheque counts as paid, but not as cleared until the date it can be banked.': 'الشيك المؤجّل يُحتسب مدفوعًا، لكنه لا يُحتسب محصّلًا حتى تاريخ إمكان إيداعه.',
@@ -1303,6 +1310,9 @@ TRANSLATIONS = {
         'Enter the metres needed, or a number of bars.':
             'أدخل الأمتار المطلوبة، أو عدد القضبان.',
         'Search profiles': 'بحث عن المقاطع',
+        'Manufacturer': 'الشركة المصنّعة',
+        'All manufacturers': 'كل الشركات المصنّعة',
+        'Catalogue data © {name}': 'بيانات الكتالوج © {name}',
         'All series': 'كل السلاسل',
         'All roles': 'كل الأنواع',
         'All families': 'كل العائلات',
@@ -1457,6 +1467,10 @@ TRANSLATIONS = {
         'delivered': 'سُلّمت',
         'Date': 'التاريخ',
         'Locations': 'المواقع',
+        'Send by WhatsApp': 'إرسال عبر واتساب',
+        'The server sent no WhatsApp link.': 'لم يُرسل الخادم رابط واتساب.',
+        'An error was reported': 'تم الإبلاغ عن خطأ',
+        'Something went wrong. The error has been reported and the app can carry on.': 'حدث خطأ ما. تم الإبلاغ عن الخطأ ويمكن متابعة العمل.',
     },
 }
 

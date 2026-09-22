@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.i18n import t
+from app.i18n import get_language, t
 
 PAGE_SIZE = 50
 SEARCH_DEBOUNCE_MS = 300
@@ -43,6 +43,43 @@ THUMB_H = 40
 THUMB_W = 72
 IMAGE_FILTER = 'Images (*.png *.jpg *.jpeg *.webp *.gif *.bmp)'
 
+# The catalogue has a manufacturer axis: Klil, Extal, Alubin and the rest,
+# each with its own series and profile numbers. Numbers repeat between makers,
+# so the API names a series or profile by key -- "<maker slug>:<code>" -- and
+# every request that used to carry a bare code now carries the key instead.
+#
+# The maker everybody assumes when none is said. Klil until the server's
+# manufacturer list names another; the dialogs that show a profile use it to
+# name the maker only when it is not this one.
+_default_slug = 'klil'
+
+
+def set_default_manufacturer(slug):
+    global _default_slug
+    if slug:
+        _default_slug = slug
+
+
+def is_default_manufacturer(slug):
+    return not slug or slug == _default_slug
+
+
+def maker_name(row):
+    """The maker's name for a catalogue/stock/order row, or '' when it is
+    the default maker (or the server did not say)."""
+    row = row or {}
+    if is_default_manufacturer(row.get('manufacturer_slug')):
+        return ''
+    return row.get('manufacturer_name') or ''
+
+
+def maker_label(maker):
+    """How a maker is named in the UI: Hebrew by default, English when the
+    window is in English."""
+    if get_language() == 'en' and maker.get('name_en'):
+        return maker['name_en']
+    return maker.get('name') or maker.get('slug') or ''
+
 
 class ListingModel(QAbstractTableModel):
     """Catalog rows. Columns are ordered the way someone reads a parts list:
@@ -53,12 +90,17 @@ class ListingModel(QAbstractTableModel):
         ('number', 'Profile'),
         ('description', 'Description'),
         ('series_code', 'Series'),
+        ('manufacturer_name', 'Manufacturer'),
         ('role_display', 'Type'),
         ('glass', 'Glass'),
         ('track_count', 'Tracks'),
         ('weight', 'Weight'),
         ('price', 'Price/m'),
     ]
+
+    # Shown only while every maker is on screen; with one maker selected the
+    # column would repeat its name down every row.
+    MAKER_COL = 4
 
     def __init__(self):
         super().__init__()
@@ -172,8 +214,12 @@ class CatalogView(QWidget):
         # Kept so the role filter can be rebuilt in a new language without
         # re-fetching it.
         self._role_data = []
-        # code -> price_per_kg (as returned by the API), so the price editor can
-        # prefill and reflect edits without refetching the series list.
+        # Active makers from catalog/manufacturers/, in position order. Empty
+        # on an older backend, and then the selector stays hidden.
+        self._manufacturers = []
+        self._series_request = 0
+        # series key -> price_per_kg (as returned by the API), so the price
+        # editor can prefill and reflect edits without refetching the list.
         self._series_price = {}
         # section_image URLs already requested, so a thumbnail is fetched once
         # even as the same page is repainted.
@@ -229,11 +275,18 @@ class CatalogView(QWidget):
         self.search.setMinimumWidth(240)
         self.search.textChanged.connect(self._on_search_typed)
 
+        # Which maker's catalogue. Hidden until the server lists makers, so an
+        # older backend without the endpoint shows the screen as it was.
+        self.manufacturer = QComboBox()
+        self.manufacturer.hide()
+        self.manufacturer.currentIndexChanged.connect(self._on_manufacturer_changed)
+
         self.series = QComboBox()
         self.role = QComboBox()
         self.tracks = QComboBox()
         self.glass = QComboBox()
-        for combo in (self.series, self.role, self.tracks, self.glass):
+        for combo in (self.manufacturer, self.series, self.role, self.tracks,
+                      self.glass):
             combo.setMinimumWidth(140)
         # Changing the series also narrows the Type list and moves the price
         # editor onto that series, so it gets its own handler rather than the
@@ -260,7 +313,8 @@ class CatalogView(QWidget):
 
         filters = QHBoxLayout()
         filters.setSpacing(9)
-        for widget in (self.search, self.series, self.role, self.tracks, self.glass):
+        for widget in (self.search, self.manufacturer, self.series, self.role,
+                       self.tracks, self.glass):
             filters.addWidget(widget)
         filters.addWidget(self.clear)
         filters.addStretch()
@@ -298,10 +352,16 @@ class CatalogView(QWidget):
         for column in range(3, len(ListingModel.COLUMNS)):
             head.setSectionResizeMode(column, QHeaderView.ResizeToContents)
         head.setHighlightSections(False)
+        self.table.setColumnHidden(ListingModel.MAKER_COL, True)
 
         self.status = QLabel('', objectName='Muted')
         self.status.setAlignment(Qt.AlignCenter)
         self.status.hide()
+
+        # Whose data this is, under the table, while one maker is selected.
+        self.attribution = QLabel('', objectName='CardHint')
+        self.attribution.setWordWrap(True)
+        self.attribution.hide()
 
         self.prev = QPushButton('‹', objectName='Ghost')
         self.next = QPushButton('›', objectName='Ghost')
@@ -324,16 +384,16 @@ class CatalogView(QWidget):
         layout.addLayout(filters)
         layout.addWidget(self.status)
         layout.addWidget(self.table, 1)
+        layout.addWidget(self.attribution)
         layout.addLayout(pager)
 
     # -- data ------------------------------------------------------------
 
     def load_filter_options(self):
         """Populate the filter dropdowns from the API, once."""
-        self.series.blockSignals(True)
-        self.series.clear()
-        self.series.addItem(t('All series'), None)
-        self.series.blockSignals(False)
+        self.api.get('catalog/manufacturers/', on_ok=self._on_manufacturers,
+                     on_error=self._on_manufacturers_error)
+        self._load_series()
 
         self.role.blockSignals(True)
         self.role.clear()
@@ -354,18 +414,105 @@ class CatalogView(QWidget):
             self.glass.addItem(f'{mm} mm', mm)
         self.glass.blockSignals(False)
 
-        self.api.get('catalog/series/', on_ok=self._on_series, on_error=self._on_error)
-        self.api.get('catalog/listings/roles/', on_ok=self._on_roles,
-                     on_error=self._on_error)
+        self.api.get('catalog/listings/roles/', self._maker_params(),
+                     on_ok=self._on_roles, on_error=self._on_error)
 
-    def _on_series(self, payload):
+    def _maker_params(self, params=None):
+        """The query parameters, plus the selected maker if there is one."""
+        params = dict(params or {})
+        if slug := self.manufacturer.currentData():
+            params['manufacturer'] = slug
+        return params or None
+
+    def _load_series(self):
+        """Refill the series list for the selected maker."""
+        self.series.blockSignals(True)
+        self.series.clear()
+        self.series.addItem(t('All series'), None)
+        self.series.blockSignals(False)
+        self._series_price = {}
+        # Stamped like the listing: a slow answer for the previous maker must
+        # not land on top of the current one's list.
+        self._series_request += 1
+        request_id = self._series_request
+        self.api.get(
+            'catalog/series/', self._maker_params(),
+            on_ok=lambda payload: self._on_series(payload, request_id),
+            on_error=self._on_error,
+        )
+
+    def _on_series(self, payload, request_id=None):
+        if request_id is not None and request_id != self._series_request:
+            return
+        # With every maker on screen two makers can share a series code, so
+        # the maker is written in front of it.
+        name_makers = self.manufacturer.currentData() is None and bool(self._manufacturers)
         self.series.blockSignals(True)
         for item in payload or []:
+            key = item.get('key') or item['code']
             family = item.get('family_name') or ''
             label = f"{item['code']} · {family}" if family else item['code']
-            self.series.addItem(f"{label}  ({item['profile_count']})", item['code'])
-            self._series_price[item['code']] = item.get('price_per_kg')
+            if name_makers and item.get('manufacturer_name'):
+                label = f"{item['manufacturer_name']} · {label}"
+            self.series.addItem(f"{label}  ({item['profile_count']})", key)
+            self._series_price[key] = item.get('price_per_kg')
         self.series.blockSignals(False)
+
+    # -- manufacturer selection -------------------------------------------
+
+    def _on_manufacturers(self, payload):
+        makers = [m for m in (payload or []) if m.get('is_active', True)]
+        self._manufacturers = makers
+        for maker in makers:
+            if maker.get('is_default'):
+                set_default_manufacturer(maker.get('slug'))
+        self.manufacturer.blockSignals(True)
+        self.manufacturer.clear()
+        # One maker needs no "All": the selector opens on that maker.
+        if len(makers) != 1:
+            self.manufacturer.addItem(t('All manufacturers'), None)
+        for maker in makers:
+            self.manufacturer.addItem(maker_label(maker), maker['slug'])
+        self.manufacturer.blockSignals(False)
+        self.manufacturer.setVisible(bool(makers))
+        # Nothing to refetch: the lists already loaded are either for every
+        # maker or, with one maker, for that one.
+        self._sync_manufacturer_ui()
+
+    def _on_manufacturers_error(self, error):
+        # An older backend (404), or no answer: no selector, screen as before.
+        self._manufacturers = []
+        self.manufacturer.hide()
+        self._sync_manufacturer_ui()
+
+    def _selected_maker(self):
+        slug = self.manufacturer.currentData()
+        return next((m for m in self._manufacturers if m.get('slug') == slug), None)
+
+    def _sync_manufacturer_ui(self):
+        """The maker column and the attribution line follow the selector."""
+        maker = self._selected_maker()
+        all_makers = self.manufacturer.currentData() is None and bool(self._manufacturers)
+        self.table.setColumnHidden(ListingModel.MAKER_COL, not all_makers)
+        if maker:
+            text = (maker.get('attribution')
+                    or t('Catalogue data © {name}').format(name=maker_label(maker)))
+            self.attribution.setText(text)
+            self.attribution.show()
+            self.manufacturer.setToolTip(text)
+        else:
+            self.attribution.hide()
+            self.manufacturer.setToolTip('')
+
+    def _on_manufacturer_changed(self):
+        """Maker picked: its series list, its roles, then its rows."""
+        self.page = 1
+        self._sync_manufacturer_ui()
+        self.series.blockSignals(True)
+        self.series.setCurrentIndex(0)
+        self.series.blockSignals(False)
+        self._load_series()
+        self._on_series_changed()
 
     # -- series selection: narrow roles, move the price editor ------------
 
@@ -378,8 +525,8 @@ class CatalogView(QWidget):
         """
         self.page = 1
         self._sync_price_editor()
-        code = self.series.currentData()
-        params = {'series': code} if code else None
+        key = self.series.currentData()
+        params = self._maker_params({'series': key} if key else None)
         self.api.get('catalog/listings/roles/', params,
                      on_ok=self._on_roles_then_reload, on_error=self._on_roles_error)
 
@@ -397,12 +544,12 @@ class CatalogView(QWidget):
         """Point the price field at the selected series and prefill its price."""
         if not self._can_edit_price:
             return
-        code = self.series.currentData()
-        enabled = bool(code)
+        key = self.series.currentData()
+        enabled = bool(key)
         self.price_input.setEnabled(enabled)
         self.price_input.blockSignals(True)
         if enabled:
-            price = self._series_price.get(code)
+            price = self._series_price.get(key)
             self.price_input.setText('' if price in (None, '') else f'{float(price):g}')
             self.price_input.setPlaceholderText(t('Price/kg'))
         else:
@@ -414,22 +561,23 @@ class CatalogView(QWidget):
         """Save the typed price/kg for the selected series, if it changed."""
         if not self._can_edit_price:
             return
-        code = self.series.currentData()
-        if not code:
+        key = self.series.currentData()
+        if not key:
             return
         text = self.price_input.text().strip().replace(',', '.')
         new_value = None if text == '' else text
         # editingFinished also fires on focus-out; skip a no-op PATCH.
-        if self._price_equal(new_value, self._series_price.get(code)):
+        if self._price_equal(new_value, self._series_price.get(key)):
             return
-        self.api.patch(f'catalog/series/{code}/price/',
+        # The key, not the bare code: 7000 could be two makers' series.
+        self.api.patch(f'catalog/series/{key}/price/',
                        {'price_per_kg': new_value},
                        on_ok=self._on_price_saved, on_error=self._on_error)
 
     def _on_price_saved(self, payload):
-        code = payload.get('code')
-        if code:
-            self._series_price[code] = payload.get('price_per_kg')
+        key = payload.get('key') or payload.get('code')
+        if key:
+            self._series_price[key] = payload.get('price_per_kg')
         self._sync_price_editor()
         # Recompute the visible price column against the new price.
         self.reload()
@@ -464,7 +612,7 @@ class CatalogView(QWidget):
         self.reload()
 
     def reload(self):
-        params = {'page': self.page}
+        params = self._maker_params({'page': self.page})
         if text := self.search.text().strip():
             params['search'] = text
         if series := self.series.currentData():
@@ -495,7 +643,7 @@ class CatalogView(QWidget):
         from PySide6.QtGui import QDesktopServices
         from PySide6.QtCore import QUrl
 
-        params = {}
+        params = self._maker_params() or {}
         if text := self.search.text().strip():
             params['search'] = text
         if series := self.series.currentData():
@@ -601,7 +749,9 @@ class CatalogView(QWidget):
             self._upload_for_row(row)
 
     def _upload_for_row(self, row):
-        number = row.get('number')
+        # The key names the profile across makers; an older server sends only
+        # the number, which it also accepts.
+        number = row.get('key') or row.get('number')
         if not number:
             return
         path, _ = QFileDialog.getOpenFileName(
@@ -654,6 +804,11 @@ class CatalogView(QWidget):
             combo.blockSignals(True)
             combo.setCurrentIndex(0)
             combo.blockSignals(False)
+        # Back to every maker: that path refills the series list before it
+        # restores the roles and reloads.
+        if self.manufacturer.count() and self.manufacturer.currentIndex() != 0:
+            self.manufacturer.setCurrentIndex(0)
+            return
         # Back to "All series": restore the global role list, reset the price
         # editor, and reload -- the same path a real series change takes.
         self._on_series_changed()
@@ -683,6 +838,15 @@ class CatalogView(QWidget):
         ):
             if combo.count():
                 combo.setItemText(0, t(label))
+
+        # Makers are named in the window's language; the "All" entry is the
+        # one with no slug behind it.
+        for i in range(self.manufacturer.count()):
+            slug = self.manufacturer.itemData(i)
+            maker = next((m for m in self._manufacturers if m.get('slug') == slug), None)
+            self.manufacturer.setItemText(
+                i, maker_label(maker) if maker else t('All manufacturers'))
+        self._sync_manufacturer_ui()
 
         self._fill_roles()
 

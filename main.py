@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 
-from app import i18n, theme
+from app import i18n, reporting, theme
 from app.api import DEFAULT_BASE_URL, ApiClient
 from app.session import Session
 from app.views.dialogs import ChangePasswordDialog
@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
 
     def _on_signed_out(self):
         self.session.clear()
+        reporting.set_user(None)
         self._enter_login()
 
     def _enter_app(self):
@@ -103,6 +104,10 @@ class MainWindow(QMainWindow):
         # Pull the Mapbox token before the shell builds its pages, so the map
         # widgets are created with it rather than falling back to OSM.
         self.api.load_config()
+        # The same call brings the Sentry DSN. Cached for the next start, and
+        # started now for the first run, which had nothing cached at launch.
+        reporting.apply_config(self.api.config)
+        reporting.set_user(self.session.user)
         self.shell.apply_session()
         self.stack.setCurrentWidget(self.shell)
 
@@ -144,6 +149,9 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    # Before anything that can fail: the cached DSN from the last run, and the
+    # hooks that turn a silent traceback into a report and a word to the user.
+    reporting.bootstrap()
     app = QApplication(sys.argv)
     app.setApplicationName('AlomForce')
     app.setOrganizationName('AlomForce')

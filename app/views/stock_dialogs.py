@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import t
+from app.views.catalog import maker_label, maker_name
 
 # mode -> (title, movement_type, quantity label)
 MOVE_MODES = {
@@ -39,8 +40,12 @@ class MovementDialog(QDialog):
 
     def _build(self, title, qty_label):
         heading = QLabel(t(title), objectName='LoginTitle')
+        # The maker is named only when it is not the one everybody assumes.
+        number = str(self.item.get('number', ''))
+        if maker := maker_name(self.item):
+            number = f'{number} ({maker})'
         desc = QLabel(
-            f"{self.item.get('number', '')} · {self.item.get('finish') or '—'} · "
+            f"{number} · {self.item.get('finish') or '—'} · "
             f"{(self.item.get('length_mm') or 0) / 1000:g} m\n"
             f"{self.item.get('warehouse', '')} — {t('on hand')}: {self.current}",
             objectName='Muted')
@@ -115,6 +120,13 @@ class AddStockDialog(QDialog):
     def _build(self):
         heading = QLabel(t('Add stock item'), objectName='LoginTitle')
 
+        # Whose catalogue the number is from. Numbers repeat between makers,
+        # so the holding is posted by key ("<maker>:<number>"). Hidden until
+        # the server lists makers; an older backend takes the bare number.
+        self.manufacturer_label = QLabel(t('Manufacturer'))
+        self.manufacturer = QComboBox()
+        self.manufacturer_label.hide()
+        self.manufacturer.hide()
         self.profile = QLineEdit(placeholderText=t('Profile number, e.g. 04901'))
         self.warehouse = QComboBox()
         self.warehouse.currentIndexChanged.connect(self._load_locations)
@@ -133,6 +145,7 @@ class AddStockDialog(QDialog):
 
         form = QFormLayout()
         form.setSpacing(10)
+        form.addRow(self.manufacturer_label, self.manufacturer)
         form.addRow(t('Profile'), self.profile)
         form.addRow(t('Warehouse'), self.warehouse)
         form.addRow(t('Location'), self.location)
@@ -162,9 +175,25 @@ class AddStockDialog(QDialog):
         layout.addLayout(buttons)
 
     def _load_options(self):
+        self.api.get('catalog/manufacturers/', on_ok=self._on_manufacturers,
+                     on_error=lambda e: None)
         self.api.get('warehouses/', {'active': 'true'},
                      on_ok=self._on_warehouses, on_error=lambda e: None)
         self.api.get('stock/options/', on_ok=self._on_finishes, on_error=lambda e: None)
+
+    def _on_manufacturers(self, payload):
+        makers = [m for m in (payload or []) if m.get('is_active', True)]
+        if not makers:
+            return
+        for maker in makers:
+            self.manufacturer.addItem(maker_label(maker), maker['slug'])
+        default = next((m for m in makers if m.get('is_default')), makers[0])
+        self.manufacturer.setCurrentIndex(
+            max(0, self.manufacturer.findData(default['slug'])))
+        # One maker has nothing to choose; the key is still built from it.
+        if len(makers) > 1:
+            self.manufacturer_label.show()
+            self.manufacturer.show()
 
     def _on_warehouses(self, payload):
         rows = payload.get('results', payload) if isinstance(payload, dict) else payload
@@ -201,8 +230,11 @@ class AddStockDialog(QDialog):
             length = int(self.length.currentText() or self.length.currentData())
         except (TypeError, ValueError):
             return self._show(t('Enter a valid length in millimetres.'))
+        # A number typed with its maker ("extal:C90") is already a key.
+        slug = self.manufacturer.currentData()
+        key = number if ':' in number or not slug else f'{slug}:{number}'
         data = {
-            'profile': number,
+            'profile': key,
             'location': self.location.currentData(),
             'length_mm': length,
             'finish': self.finish.currentText().strip(),

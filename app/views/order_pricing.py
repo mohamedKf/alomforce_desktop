@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import t
+from app.views.catalog import maker_name
 
 COLUMNS = ['Profile', 'Weight kg', 'Last price', 'Price per kg',
            'Discount %', 'Line total']
@@ -210,8 +211,10 @@ class OrderPricing(QWidget):
         head = '  '.join(part for part in (line.get('series_code'),
                                            line.get('name')) if part)
         name = f"{head or line.get('profile') or ''}"
+        # The maker joins the code only when it is not the default one.
         tail = '  ·  '.join(part for part in (line.get('profile'),
-                                              line.get('series')) if part)
+                                              line.get('series'),
+                                              maker_name(line)) if part)
         if tail:
             name += f"      {tail}"
         # Priced by the kilo, so the quantity that matters is the weight.

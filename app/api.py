@@ -17,6 +17,8 @@ from urllib.parse import urlencode
 import requests
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 
+from app import reporting
+
 # No baked-in server: each shop is given a connection link by the provider and
 # the app is useless without it, so first run starts unconfigured and prompts
 # for the address (typed in, or scanned from the desktop QR) rather than
@@ -231,6 +233,9 @@ class ApiClient(QObject):
         # sign-in via load_config(); empty until then, which the map treats as
         # "use OpenStreetMap".
         self.mapbox_token = ''
+        # The whole /config/ answer, for what else it carries (the Sentry DSN).
+        # None until it has been fetched, which is not the same as empty.
+        self.config = None
         # Serialises token refresh. When the access token expires, every page's
         # in-flight request hits 401 at once; without this each would fire its
         # own /auth/refresh/, and that storm of concurrent refreshes is what
@@ -293,8 +298,10 @@ class ApiClient(QObject):
         """Fetch client config (Mapbox token) synchronously. Best-effort."""
         try:
             data = self.request_sync('GET', 'config/')
-            self.mapbox_token = (data or {}).get('mapbox_token', '') or ''
+            self.config = data if isinstance(data, dict) else {}
+            self.mapbox_token = self.config.get('mapbox_token', '') or ''
         except ApiError:
+            self.config = None
             self.mapbox_token = ''
 
     def set_base_url(self, url):
@@ -399,6 +406,7 @@ class ApiClient(QObject):
             if self._ensure_refreshed(used_access):
                 return self.request_sync(method, path, params, data, auth, _retry=False)
 
+        self._note_failure(method, path, response)
         if response.status_code == 204 or not response.content:
             return None
 
@@ -441,6 +449,7 @@ class ApiClient(QObject):
                 return self.upload_sync(path, file_path, field, _retry=False,
                                         method=method)
 
+        self._note_failure(method, path, response)
         if response.status_code == 204 or not response.content:
             return None
         try:
@@ -486,6 +495,7 @@ class ApiClient(QObject):
         if response.status_code == 401 and _retry and self.session.refresh:
             if self._ensure_refreshed(used_access):
                 return self.download_pdf_sync(path, filename, _retry=False)
+        self._note_failure('GET', path, response)
         if not response.ok:
             raise ApiError(f'Could not build the PDF ({response.status_code}).')
         folder = tempfile.mkdtemp(prefix='alomforce_pdf_')
@@ -493,6 +503,22 @@ class ApiClient(QObject):
         with open(full, 'wb') as fh:
             fh.write(response.content)
         return full
+
+    @staticmethod
+    def _note_failure(method, path, response):
+        """A 5xx is the server's fault, not the user's: report it.
+
+        A 4xx is an answer (validation, permission, not found) and is shown to
+        the person instead. No-op without a Sentry DSN.
+        """
+        if response.status_code < 500:
+            return
+        detail = ''
+        try:
+            detail = ApiClient._describe(response.json(), response.status_code)
+        except ValueError:
+            pass
+        reporting.report_api_failure(method, path, response.status_code, detail)
 
     def _ensure_refreshed(self, stale_access):
         """Refresh the access token once, even under a storm of concurrent 401s.

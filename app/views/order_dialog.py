@@ -35,7 +35,7 @@ from app.i18n import t
 from app.views.order_attachments import OrderAttachments
 from app.views.order_payments import OrderPayments
 from app.views.order_pricing import OrderPricing
-from app.views.catalog import CatalogView
+from app.views.catalog import CatalogView, maker_name
 
 # The order lifecycle, in flow order (matches the backend OrderStatus).
 ORDER_STATUSES = [
@@ -308,8 +308,11 @@ class OrderDialog(QDialog):
     def _refresh_table(self):
         self.table.setRowCount(len(self.lines))
         for r, line in enumerate(self.lines):
+            number = line.get('number', '')
+            if maker := maker_name(line):
+                number = f'{number} · {maker}'
             values = [
-                line.get('number', ''),
+                number,
                 str(line.get('quantity') or '—'),
                 str(line.get('total_length_m', '')),
                 line.get('_weight', ''),
@@ -344,6 +347,7 @@ class OrderDialog(QDialog):
             self.required_by.setDate(QDate.fromString(order['required_by'], 'yyyy-MM-dd'))
         self.notes.setPlainText(order.get('notes') or '')
         self.discount_percent = _dec(order.get('discount_percent'))
+        self.attachments.set_status(order.get('status'))
         self.lines = []
         for l in order.get('lines', []):
             line = dict(l)
@@ -362,9 +366,11 @@ class OrderDialog(QDialog):
         if not self.lines:
             self._show_error(t('Add at least one line.'))
             return None
+        # Keys where the server gave them (profile_key on a saved line, key on
+        # a picked row); the bare number/code otherwise, which it still takes.
         lines = [{
-            'profile': l['profile'],
-            'series': l.get('series'),
+            'profile': l.get('profile_key') or l['profile'],
+            'series': l.get('series_key') or l.get('series'),
             'total_length_m': l['total_length_m'],
             'price_per_kg': l['price_per_kg'],
             'length_mm': l.get('length_mm'),
@@ -454,6 +460,10 @@ class OrderDialog(QDialog):
         # set_status returns a minimal payload; keep the status on our order.
         if isinstance(order, dict) and order.get('status'):
             self.order = {**(self.order or {}), **order}
+            # Which papers exist follows the status: the quote goes once the
+            # job is confirmed, the delivery note arrives once it is ready.
+            self.attachments.set_status(order['status'])
+            self.attachments.reload()
         self._show_error('')
 
     def _on_status_error(self, error):

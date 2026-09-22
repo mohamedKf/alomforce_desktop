@@ -198,6 +198,62 @@ QTableWidget {{
 }}
 QTableWidget::item {{ padding: 8px 10px; border-bottom: 1px solid #EFF2F5; }}
 
+/* Trees and lists (the order's documents, a warehouse's locations). Without a
+   ground of their own they inherit the platform palette, which on a Mac in
+   dark mode is black -- a black panel in the middle of a light app. Stated
+   here so the app looks the same whatever the OS theme is set to. */
+QTreeView, QTreeWidget, QListView, QListWidget {{
+    background: {SURFACE};
+    color: {INK};
+    border: 1px solid {LINE};
+    border-radius: 8px;
+    selection-background-color: {ACCENT_LIGHT};
+    selection-color: {INK};
+    font-size: 13px;
+    outline: none;
+}}
+QTreeView::item, QTreeWidget::item, QListView::item, QListWidget::item {{
+    padding: 7px 8px;
+    color: {INK};
+}}
+QTreeView::item:hover, QTreeWidget::item:hover,
+QListView::item:hover, QListWidget::item:hover {{ background: {CANVAS}; }}
+QTreeView::item:selected, QTreeWidget::item:selected,
+QListView::item:selected, QListWidget::item:selected {{
+    background: {ACCENT_LIGHT};
+    color: {INK};
+}}
+/* The expand/collapse arrow: the platform's own is invisible on this ground. */
+QTreeView::branch {{ background: {SURFACE}; }}
+
+/* The order form's tabs. The pane behind a tab has no ground of its own
+   either, so on a dark OS theme the whole page under the tab bar went black
+   while the widgets on it stayed light. */
+QTabWidget::pane {{
+    background: {CANVAS};
+    border: none;
+    border-top: 1px solid {LINE};
+    top: -1px;
+}}
+QTabWidget > QWidget {{ background: {CANVAS}; }}
+QTabBar {{ background: transparent; }}
+QTabBar::tab {{
+    background: transparent;
+    color: {INK_MUTED};
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 9px 16px;
+    margin-right: 2px;
+    font-size: 13px;
+    font-weight: 500;
+}}
+QTabBar::tab:hover {{ color: {INK}; }}
+QTabBar::tab:selected {{
+    color: {ACCENT};
+    border-bottom: 2px solid {ACCENT};
+    font-weight: 600;
+}}
+
 /* ---------- Buttons ---------- */
 
 QPushButton {{
@@ -420,6 +476,16 @@ QLabel#StatValue   {{ color: {ACCENT}; font-size: 24px; font-weight: 800; }}
 QLabel#StatNote    {{ color: {INK_MUTED}; font-size: 11.5px; }}
 
 /* Company-logo preview box in Settings. */
+/* The document preview. A sheet of paper: white, whatever the page is, so a
+   PDF's transparent ground and a photo with transparency both read as a
+   document rather than as a hole in the screen. */
+QLabel#Preview {{
+    background: #FFFFFF;
+    border: 1px solid {LINE};
+    border-radius: 6px;
+    color: {INK_MUTED};
+}}
+
 QLabel#LogoPreview {{
     border: 1px dashed {LINE};
     border-radius: 8px;

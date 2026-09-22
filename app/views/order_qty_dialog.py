@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import t
+from app.views.catalog import maker_name
 
 DEFAULT_BAR_MM = 6000
 
@@ -94,7 +95,12 @@ class OrderQtyDialog(QDialog):
 
     def _header(self):
         """What is being added, said once and clearly."""
-        number = QLabel(str(self.src.get('number', '')), objectName='LoginTitle')
+        # The maker sits next to the number when it is not the default one:
+        # 7000 from Klil and 7000 from another maker are different profiles.
+        number_text = str(self.src.get('number', ''))
+        if maker := maker_name(self.src):
+            number_text = f'{number_text}  ·  {maker}'
+        number = QLabel(number_text, objectName='LoginTitle')
         desc = QLabel(self.src.get('description') or '', objectName='Muted')
         desc.setWordWrap(True)
         # A profile number is all digits, and Qt reads a label's direction from
@@ -372,11 +378,23 @@ class OrderQtyDialog(QDialog):
             return
         weight = _dec(self.weight.value())
         price = _dec(self.price.value())
+        # Sent by key so the server picks the right maker's profile. A
+        # catalogue row carries `key`, a saved line `profile_key`; an older
+        # server sends neither and still takes the bare number.
+        profile_key = (self.src.get('key') or self.src.get('profile_key')
+                       or self.src.get('profile') or self.src.get('number'))
+        series_code = self.src.get('series_code') or self.src.get('series')
+        series_key = self.src.get('series_key') or series_code
         line = {
-            'profile': self.src.get('number'),
+            'profile': profile_key,
+            'profile_key': profile_key,
             'number': self.src.get('number'),
             'description': self.src.get('description') or '',
-            'series': self.src.get('series_code') or self.src.get('series'),
+            'series': series_key,
+            'series_key': series_key,
+            'series_code': series_code,
+            'manufacturer_slug': self.src.get('manufacturer_slug'),
+            'manufacturer_name': self.src.get('manufacturer_name'),
             'weight_g_per_m': self.src.get('weight_g_per_m'),
             'length_mm': self.bar_len.value(),
             'quantity': self._bars,

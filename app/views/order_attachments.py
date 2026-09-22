@@ -21,7 +21,7 @@ import subprocess
 import sys
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPixmap
+from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -40,8 +40,14 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import t
+from app.share import KINDS as SHARE_KINDS, send_by_whatsapp
 
 KINDS = [('drawing', 'Drawing'), ('other', 'Other')]
+
+# The quote is sent while the order is still an offer. After that the server
+# no longer lists it -- and if the status changed on this screen a moment ago,
+# the list may not have caught up, so the dialog's own status is checked too.
+QUOTE_STATUSES = ('quote', 'draft')
 FILTER = 'Documents (*.pdf *.png *.jpg *.jpeg *.webp *.heic)'
 
 # The order the sections read in, and what each is called. Anything the server
@@ -93,8 +99,27 @@ def _preview_pixmap(path, width):
     height = int(width * size.height() / size.width())
     image = document.render(0, QSize(int(width), height))
     if isinstance(image, QImage) and not image.isNull():
-        return QPixmap.fromImage(image)
+        return QPixmap.fromImage(_on_paper(image))
     return None
+
+
+def _on_paper(image):
+    """The page on white, because a PDF page has no background of its own.
+
+    QPdfDocument renders only the ink: every pixel the document does not draw
+    comes back fully transparent, so the sheet composites against whatever is
+    behind it and a mostly-empty page reads as a black rectangle. Real paper is
+    what the office expects to see, so the page is laid onto white here rather
+    than left for the widget under it to supply.
+    """
+    if not image.hasAlphaChannel():
+        return image
+    paper = QImage(image.size(), QImage.Format_RGB32)
+    paper.fill(QColor('#FFFFFF'))
+    painter = QPainter(paper)
+    painter.drawImage(0, 0, image)
+    painter.end()
+    return paper
 
 
 class OrderAttachments(QWidget):
@@ -104,6 +129,7 @@ class OrderAttachments(QWidget):
         super().__init__(parent)
         self.api = api
         self.order_id = order_id
+        self.order_status = None
         self.rows = []
         self._preview_path = None
         # Named, or it paints black: an unstyled QWidget has no ground of its
@@ -120,13 +146,19 @@ class OrderAttachments(QWidget):
         self.open_btn = QPushButton(t('Open'), objectName='Ghost')
         self.save_as_btn = QPushButton(t('Save a copy…'), objectName='Ghost')
         self.remove_btn = QPushButton(t('Remove'), objectName='Ghost')
+        # Shown beside the quote and the delivery note only; the other papers
+        # have no public link to send.
+        self.whatsapp_btn = QPushButton(t('Send by WhatsApp'), objectName='Ghost')
+        self.whatsapp_btn.hide()
         self.open_btn.clicked.connect(self._open)
         self.save_as_btn.clicked.connect(self._save_as)
         self.remove_btn.clicked.connect(self._remove)
+        self.whatsapp_btn.clicked.connect(self._send_whatsapp)
 
         header = QHBoxLayout()
         header.addWidget(self.heading)
         header.addStretch()
+        header.addWidget(self.whatsapp_btn)
         header.addWidget(self.save_as_btn)
         header.addWidget(self.remove_btn)
         header.addWidget(self.open_btn)
@@ -213,6 +245,12 @@ class OrderAttachments(QWidget):
         self._refresh_enabled()
         self.reload()
 
+    def set_status(self, status):
+        """The order's current status, which decides whether the quote is
+        still something to send."""
+        self.order_status = status
+        self._refresh_enabled()
+
     def _refresh_enabled(self):
         # There is nothing to attach a file to until the order exists.
         has_order = self.order_id is not None
@@ -223,6 +261,7 @@ class OrderAttachments(QWidget):
         self.save_as_btn.setEnabled(bool(row))
         # A generated sheet is not a file; there is nothing to delete.
         self.remove_btn.setEnabled(bool(row and not row.get('generated')))
+        self.whatsapp_btn.setVisible(self._shareable(row))
         if not has_order:
             self.status.setText(t('Save the order first, then attach the sheet.'))
 
@@ -454,6 +493,40 @@ class OrderAttachments(QWidget):
             self._path_for(row), row.get('filename') or 'document.pdf',
             on_ok=write, on_error=self._on_error)
 
+    def _shareable(self, row):
+        """Whether this row is a paper the client can be sent a link to."""
+        if not row or not row.get('generated') or self.order_id is None:
+            return False
+        kind = row.get('kind')
+        if kind not in SHARE_KINDS:
+            return False
+        if kind == 'quote' and self.order_status not in (None, *QUOTE_STATUSES):
+            return False
+        return True
+
+    def _send_whatsapp(self):
+        row = self._selected()
+        if not self._shareable(row):
+            return
+        self.status.setText('')
+        self.whatsapp_btn.setEnabled(False)
+        self.whatsapp_btn.setText(t('Sending…'))
+        send_by_whatsapp(self.api, self.order_id, row['kind'],
+                         on_done=self._whatsapp_opened,
+                         on_error=self._whatsapp_failed)
+
+    def _whatsapp_opened(self, _payload):
+        self._reset_whatsapp_btn()
+
+    def _whatsapp_failed(self, error):
+        self._reset_whatsapp_btn()
+        # The server's own words: no phone on the client, not a quote any more.
+        self._on_error(error)
+
+    def _reset_whatsapp_btn(self):
+        self.whatsapp_btn.setEnabled(True)
+        self.whatsapp_btn.setText(t('Send by WhatsApp'))
+
     def _remove(self):
         row = self._selected()
         if not row:
@@ -497,6 +570,7 @@ class OrderAttachments(QWidget):
         self.open_btn.setText(t('Open'))
         self.save_as_btn.setText(t('Save a copy…'))
         self.remove_btn.setText(t('Remove'))
+        self.whatsapp_btn.setText(t('Send by WhatsApp'))
         self.drop_hint.setText(t('or drag files here'))
         self.note.setPlaceholderText(t('Which plan, e.g. +6.12'))
         self.tree.setHeaderLabels([t('Document'), t('Note'), t('Added')])

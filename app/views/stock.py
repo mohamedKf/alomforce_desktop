@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import t
+from app.views.catalog import maker_label, set_default_manufacturer
 from app.views.stock_dialogs import AddStockDialog, MovementDialog
 
 PAGE_SIZE = 50
@@ -47,12 +48,16 @@ class StockModel(QAbstractTableModel):
         ('number', 'Profile'),
         ('description', 'Description'),
         ('series', 'Series'),
+        ('manufacturer_name', 'Manufacturer'),
         ('finish', 'Color'),
         ('length', 'Length'),
         ('quantity', 'Amount'),
         ('warehouse', 'Warehouse'),
         ('status', 'Status'),
     ]
+
+    # Shown only when the rows on screen come from more than one maker.
+    MAKER_COL = 4
 
     def __init__(self):
         super().__init__()
@@ -132,6 +137,12 @@ class StockView(QWidget):
         self.total = 0
         self._request_id = 0
         self._role_data = []
+        # Active makers from catalog/manufacturers/ (empty on an older
+        # backend, where the selector stays hidden) and every series that
+        # stock knows, so the series list can be narrowed to a maker without
+        # another request.
+        self._manufacturers = []
+        self._series_options = []
         self._thumb_requested = set()
         self.setObjectName('Canvas')
         self._build()
@@ -173,6 +184,13 @@ class StockView(QWidget):
         self.search.setMinimumWidth(220)
         self.search.textChanged.connect(self._on_search_typed)
 
+        self.manufacturer = QComboBox()
+        self.manufacturer.hide()
+        self.manufacturer.setMinimumWidth(130)
+        # A maker change also narrows the series and type lists, so it does
+        # not take the plain reload the other filters use.
+        self.manufacturer.currentIndexChanged.connect(self._on_manufacturer_changed)
+
         self.series = QComboBox()
         self.role = QComboBox()
         self.finish = QComboBox()
@@ -188,8 +206,8 @@ class StockView(QWidget):
 
         filters = QHBoxLayout()
         filters.setSpacing(9)
-        for widget in (self.search, self.series, self.role, self.finish,
-                       self.warehouse, self.availability):
+        for widget in (self.search, self.manufacturer, self.series, self.role,
+                       self.finish, self.warehouse, self.availability):
             filters.addWidget(widget)
         filters.addWidget(self.clear)
         filters.addStretch()
@@ -212,6 +230,7 @@ class StockView(QWidget):
         for column in range(3, len(StockModel.COLUMNS)):
             head.setSectionResizeMode(column, QHeaderView.ResizeToContents)
         head.setHighlightSections(False)
+        self.table.setColumnHidden(StockModel.MAKER_COL, True)
         self.table.selectionModel().selectionChanged.connect(self._update_actions)
         self.table.doubleClicked.connect(lambda _i: self._move('receive'))
 
@@ -258,15 +277,87 @@ class StockView(QWidget):
             self.availability.addItem(t(label), value)
         self.availability.blockSignals(False)
 
-        self.api.get('catalog/series/', on_ok=self._on_series, on_error=self._on_error)
-        self.api.get('catalog/listings/roles/', on_ok=self._on_roles,
-                     on_error=self._on_error)
+        self.api.get('catalog/manufacturers/', on_ok=self._on_manufacturers,
+                     on_error=self._on_manufacturers_error)
+        self._load_roles()
         self.api.get('stock/options/', on_ok=self._on_options, on_error=self._on_error)
 
+    def _maker_params(self, params=None):
+        """The query parameters, plus the selected maker if there is one."""
+        params = dict(params or {})
+        if slug := self.manufacturer.currentData():
+            params['manufacturer'] = slug
+        return params or None
+
+    def _load_roles(self):
+        self.api.get('catalog/listings/roles/', self._maker_params(),
+                     on_ok=self._on_roles, on_error=self._on_error)
+
+    # -- manufacturers ---------------------------------------------------
+
+    def _on_manufacturers(self, payload):
+        makers = [m for m in (payload or []) if m.get('is_active', True)]
+        self._manufacturers = makers
+        for maker in makers:
+            if maker.get('is_default'):
+                set_default_manufacturer(maker.get('slug'))
+        self.manufacturer.blockSignals(True)
+        self.manufacturer.clear()
+        if len(makers) != 1:
+            self.manufacturer.addItem(t('All manufacturers'), None)
+        for maker in makers:
+            self.manufacturer.addItem(maker_label(maker), maker['slug'])
+        self.manufacturer.blockSignals(False)
+        self.manufacturer.setVisible(bool(makers))
+        # Series labels name their maker only once the names are known.
+        self._fill_series()
+
+    def _on_manufacturers_error(self, error):
+        # An older backend (404), or no answer: no selector, screen as before.
+        self._manufacturers = []
+        self.manufacturer.hide()
+
+    def _on_manufacturer_changed(self):
+        self.page = 1
+        self._fill_series()
+        self._load_roles()
+        self.reload()
+
+    # -- series ----------------------------------------------------------
+
     def _on_series(self, payload):
+        # Fallback for a server whose stock/options/ has no series list.
+        self._series_options = [
+            {'code': item['code'], 'key': item.get('key') or item['code'],
+             'name': item.get('name') or '',
+             'manufacturer_slug': item.get('manufacturer_slug')}
+            for item in payload or []]
+        self._fill_series()
+
+    def _fill_series(self):
+        """The series list, narrowed to the selected maker.
+
+        Filtered by key: the same code can belong to two makers, and the key
+        is what the stock filter takes.
+        """
+        slug = self.manufacturer.currentData()
+        names = {m.get('slug'): maker_label(m) for m in self._manufacturers}
+        # With every maker on screen, a series is named by its maker as well.
+        name_makers = slug is None and len(self._manufacturers) > 1
+        selected = self.series.currentData()
         self.series.blockSignals(True)
-        for item in payload or []:
-            self.series.addItem(item['code'], item['code'])
+        self.series.clear()
+        self.series.addItem(t('All series'), None)
+        for item in self._series_options:
+            maker = item.get('manufacturer_slug')
+            if slug and maker and maker != slug:
+                continue
+            label = item['code']
+            if name_makers and names.get(maker):
+                label = f"{names[maker]} · {label}"
+            self.series.addItem(label, item.get('key') or item['code'])
+        if selected:
+            self.series.setCurrentIndex(max(0, self.series.findData(selected)))
         self.series.blockSignals(False)
 
     def _on_roles(self, payload):
@@ -286,6 +377,13 @@ class StockView(QWidget):
 
     def _on_options(self, payload):
         payload = payload or {}
+        if 'series' in payload:
+            self._series_options = payload.get('series') or []
+            self._fill_series()
+        else:
+            # Older backend: the catalogue's series list, keyed by code.
+            self.api.get('catalog/series/', on_ok=self._on_series,
+                         on_error=self._on_error)
         self.finish.blockSignals(True)
         for finish in payload.get('finishes', []):
             self.finish.addItem(finish, finish)
@@ -306,7 +404,7 @@ class StockView(QWidget):
         self.reload()
 
     def reload(self):
-        params = {'page': self.page}
+        params = self._maker_params({'page': self.page})
         if text := self.search.text().strip():
             params['search'] = text
         if series := self.series.currentData():
@@ -333,6 +431,9 @@ class StockView(QWidget):
         rows = payload.get('results', []) if isinstance(payload, dict) else []
         self.total = payload.get('count', len(rows)) if isinstance(payload, dict) else 0
         self.model.set_rows(rows)
+        # The maker column earns its place only when the page mixes makers.
+        makers = {r.get('manufacturer_slug') for r in rows if r.get('manufacturer_slug')}
+        self.table.setColumnHidden(StockModel.MAKER_COL, len(makers) < 2)
         if rows:
             self.status.hide()
         else:
@@ -395,11 +496,14 @@ class StockView(QWidget):
         self.search.blockSignals(True)
         self.search.clear()
         self.search.blockSignals(False)
-        for combo in (self.series, self.role, self.finish, self.warehouse,
-                      self.availability):
+        for combo in (self.manufacturer, self.series, self.role, self.finish,
+                      self.warehouse, self.availability):
             combo.blockSignals(True)
             combo.setCurrentIndex(0)
             combo.blockSignals(False)
+        # Every maker again: widen the series and type lists to match.
+        self._fill_series()
+        self._load_roles()
         self.reload_from_first_page()
 
     # -- actions ---------------------------------------------------------
@@ -439,6 +543,12 @@ class StockView(QWidget):
                              (self.warehouse, 'All warehouses')):
             if combo.count():
                 combo.setItemText(0, t(label))
+        for i in range(self.manufacturer.count()):
+            slug = self.manufacturer.itemData(i)
+            maker = next((m for m in self._manufacturers if m.get('slug') == slug), None)
+            self.manufacturer.setItemText(
+                i, maker_label(maker) if maker else t('All manufacturers'))
+        self._fill_series()
         self._fill_roles()
         self.count.setText(f'{self.total:,} {t("items")}' if self.total else '')
         self.model.headerDataChanged.emit(Qt.Horizontal, 0, len(StockModel.COLUMNS) - 1)

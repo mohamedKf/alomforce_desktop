@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import month_name, t
+from app.share import send_by_whatsapp
 from app.views.order_dialog import OrderDialog, _open_file
 
 SEARCH_DEBOUNCE_MS = 300
@@ -176,9 +177,13 @@ class DeliveriesView(QWidget):
         self.note_btn.clicked.connect(self._open_note)
         self.open_btn = QPushButton(t('Open order'), objectName='Ghost')
         self.open_btn.clicked.connect(lambda: self._open_order(None))
+        # The signed note to the client, as a link over WhatsApp.
+        self.whatsapp_btn = QPushButton(t('Send by WhatsApp'), objectName='Ghost')
+        self.whatsapp_btn.clicked.connect(self._send_whatsapp)
         actions = QHBoxLayout()
         actions.addStretch()
         actions.addWidget(self.open_btn)
+        actions.addWidget(self.whatsapp_btn)
         actions.addWidget(self.note_btn)
         self._on_selection()
 
@@ -302,6 +307,7 @@ class DeliveriesView(QWidget):
         has = self._selected() is not None
         self.note_btn.setEnabled(has)
         self.open_btn.setEnabled(has)
+        self.whatsapp_btn.setEnabled(has)
 
     def _open_order(self, index):
         row = self.model.row_at(index) if index is not None else self._selected()
@@ -336,12 +342,38 @@ class DeliveriesView(QWidget):
         self.note_btn.setEnabled(self._selected() is not None)
         self.note_btn.setText(t('Delivery note'))
 
+    def _send_whatsapp(self):
+        """Send the client a link to the delivery note over WhatsApp."""
+        row = self._selected()
+        if not row:
+            return
+        self.whatsapp_btn.setEnabled(False)
+        self.whatsapp_btn.setText(t('Sending…'))
+        self.status_label.hide()
+
+        def done(_payload):
+            self._reset_whatsapp_btn()
+
+        def failed(error):
+            self._reset_whatsapp_btn()
+            # The server's own words: no phone on file, and so on.
+            self.status_label.setText(getattr(error, 'message', str(error)))
+            self.status_label.show()
+
+        send_by_whatsapp(self.api, row['id'], 'delivery_note',
+                         on_done=done, on_error=failed)
+
+    def _reset_whatsapp_btn(self):
+        self.whatsapp_btn.setEnabled(self._selected() is not None)
+        self.whatsapp_btn.setText(t('Send by WhatsApp'))
+
     def retranslate(self):
         self.title.setText(t('Deliveries'))
         self.search.setPlaceholderText(t('Search deliveries'))
         self.clear_btn.setText(t('Clear filters'))
         self.note_btn.setText(t('Delivery note'))
         self.open_btn.setText(t('Open order'))
+        self.whatsapp_btn.setText(t('Send by WhatsApp'))
         self.count.setText(f'{self.total:,} {t("delivered")}' if self.total else '')
         self._fill_months()
         self.year.setItemText(0, t('All years'))
