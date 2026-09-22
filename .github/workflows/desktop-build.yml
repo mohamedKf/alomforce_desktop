@@ -1,0 +1,172 @@
+# Build the desktop app for Windows and macOS.
+#
+# PyInstaller does not cross-compile, so the Windows build has to happen on a
+# Windows machine. This is that machine: push a tag and the installer comes
+# back as a release asset, with no Windows PC in the office.
+#
+#     git tag v1.1.0 && git push origin v1.1.0
+#
+# Or run it by hand from the Actions tab to get artefacts without a release.
+#
+# The Windows job produces AlomForce-Setup-<version>.exe, an Inno Setup
+# installer that upgrades any earlier version in place rather than installing
+# a second copy -- see packaging/windows/alomforce.iss.
+
+name: Desktop build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to stamp the build with (e.g. 1.1.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        shell: bash
+        run: |
+          # A tag wins, then the hand-entered box, then whatever the app
+          # itself says it is -- so a build is never stamped with a guess.
+          if [ -n "${GITHUB_REF##*/refs/tags/}" ] && [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            v="${GITHUB_REF#refs/tags/v}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            v="${{ github.event.inputs.version }}"
+          else
+            v=$(python3 -c "import re;print(re.search(r\"APP_VERSION\s*=\s*'([^']+)'\", open('app/__init__.py').read()).group(1))")
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "building $v"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Stamp the version into the app
+        shell: pwsh
+        run: |
+          $v = "${{ needs.version.outputs.version }}"
+          (Get-Content app/__init__.py) -replace "APP_VERSION = '.*'", "APP_VERSION = '$v'" |
+            Set-Content app/__init__.py
+          Get-Content app/__init__.py | Select-String APP_VERSION
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller alomforce.spec --noconfirm
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          # Inno Setup ships on the GitHub Windows runner images.
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; }
+          & $iscc "/DMyAppVersion=${{ needs.version.outputs.version }}" packaging\windows\alomforce.iss
+          Get-ChildItem dist\*.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AlomForce-Windows-${{ needs.version.outputs.version }}
+          path: dist/AlomForce-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AlomForce-Setup-*.exe
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Stamp the version into the app
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          p = pathlib.Path('app/__init__.py')
+          v = "${{ needs.version.outputs.version }}"
+          p.write_text(re.sub(r"APP_VERSION = '[^']*'", f"APP_VERSION = '{v}'", p.read_text()))
+          print(p.read_text().splitlines()[2])
+          PY
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller alomforce.spec --noconfirm
+
+      # Unsigned unless the secrets are present, so the workflow keeps working
+      # before an Apple Developer account exists. Without signing, Gatekeeper
+      # warns the first time a customer opens it.
+      - name: Sign and notarise
+        if: env.MACOS_CERT_P12 != ''
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          MACOS_NOTARY_PROFILE_JSON: ${{ secrets.MACOS_NOTARY_PROFILE_JSON }}
+        run: |
+          set -euo pipefail
+          echo "$MACOS_CERT_P12" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p build build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p build build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$MACOS_CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k build build.keychain
+          codesign --deep --force --options runtime --timestamp \
+            --sign "$MACOS_SIGN_IDENTITY" dist/AlomForce.app
+          ditto -c -k --keepParent dist/AlomForce.app /tmp/AlomForce.zip
+          echo "$MACOS_NOTARY_PROFILE_JSON" > /tmp/notary.json
+          xcrun notarytool submit /tmp/AlomForce.zip --wait \
+            --key-id "$(python3 -c 'import json;print(json.load(open("/tmp/notary.json"))["key_id"])')" \
+            --issuer "$(python3 -c 'import json;print(json.load(open("/tmp/notary.json"))["issuer"])')" \
+            --key <(python3 -c 'import json;print(json.load(open("/tmp/notary.json"))["key"])')
+          xcrun stapler staple dist/AlomForce.app
+          rm -f /tmp/cert.p12 /tmp/notary.json
+
+      - name: Zip the app
+        run: |
+          ditto -c -k --keepParent dist/AlomForce.app \
+            "dist/AlomForce-mac-${{ needs.version.outputs.version }}.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AlomForce-macOS-${{ needs.version.outputs.version }}
+          path: dist/AlomForce-mac-*.zip
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AlomForce-mac-*.zip
