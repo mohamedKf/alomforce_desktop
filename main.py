@@ -109,6 +109,9 @@ class MainWindow(QMainWindow):
         reporting.apply_config(self.api.config)
         reporting.set_user(self.session.user)
         self.shell.apply_session()
+        # And the published release, if there is one newer than this build. Said
+        # once per version as a strip over the pages, never as a dialog.
+        self.shell.apply_update_notice((self.api.config or {}).get('update'))
         self.stack.setCurrentWidget(self.shell)
 
     def _enter_login(self):

@@ -18,6 +18,13 @@ LINE = '#DDE3E9'
 SURFACE = '#FFFFFF'
 CANVAS = '#F5F7F9'
 DANGER = '#B3261E'
+# Two more states, for anything that reports how a thing stands rather than
+# what it is: a check that passed, and a gap that costs something but is not
+# yet an error. Named here so a view never spells a colour out itself.
+SUCCESS = '#2E7D32'
+WARN = '#8A6D1F'
+# The same amber at border weight, where a text colour would be too dark.
+WARN_LINE = '#C79A2E'
 
 FONT_STACK = '"Segoe UI", "Helvetica Neue", "Arial", "Noto Sans Hebrew", sans-serif'
 
@@ -420,7 +427,7 @@ QLabel#Muted      {{ color: {INK_MUTED}; font-size: 13px; }}
 
 QLabel#FieldLabel {{ color: {INK_MUTED}; font-size: 12px; font-weight: 600; }}
 QLabel#FieldError {{ color: {DANGER}; font-size: 11.5px; }}
-QLabel#FieldWarn  {{ color: #8A6D1F; font-size: 11.5px; }}
+QLabel#FieldWarn  {{ color: {WARN}; font-size: 11.5px; }}
 QLabel#SectionTitle {{
     color: {INK};
     font-size: 13px;
@@ -497,7 +504,7 @@ QLabel#LogoPreview {{
 
 /* Live connection status line in Settings. */
 QLabel#ConnStatus {{ font-size: 12.5px; font-weight: 600; color: {INK_MUTED}; }}
-QLabel#ConnStatus[state="ok"]       {{ color: #2E7D32; }}
+QLabel#ConnStatus[state="ok"]       {{ color: {SUCCESS}; }}
 QLabel#ConnStatus[state="bad"]      {{ color: {DANGER}; }}
 QLabel#ConnStatus[state="checking"] {{ color: {INK_MUTED}; }}
 
@@ -531,7 +538,7 @@ QPushButton#SmallGhost:disabled {{ color: #A9BAC5; }}
 QLineEdit[state="invalid"], QComboBox[state="invalid"],
 QPlainTextEdit[state="invalid"] {{ border: 1px solid {DANGER}; }}
 QLineEdit[state="warn"], QComboBox[state="warn"],
-QPlainTextEdit[state="warn"] {{ border: 1px solid #C79A2E; }}
+QPlainTextEdit[state="warn"] {{ border: 1px solid {WARN_LINE}; }}
 QLineEdit:focus[state="invalid"], QComboBox:focus[state="invalid"] {{ border: 1px solid {DANGER}; }}
 
 QPlainTextEdit {{
@@ -542,4 +549,60 @@ QPlainTextEdit {{
     selection-background-color: {ACCENT};
 }}
 QPlainTextEdit:focus {{ border: 1px solid {ACCENT}; }}
+
+/* ---------- "An update is available" strip ---------- */
+
+/* A tinted band across the top of the shell. Given its own ground rather than
+   left transparent: on a Mac in dark mode an unpainted strip shows the system
+   window through it, and dark text on near-black is a banner nobody can read. */
+QFrame#UpdateBanner {{
+    background: {ACCENT_LIGHT};
+    border: none;
+    border-bottom: 1px solid {LINE};
+}}
+QLabel#UpdateMark  {{ color: {ACCENT}; font-size: 15px; font-weight: 700; }}
+QLabel#UpdateTitle {{ color: {INK}; font-size: 13px; font-weight: 600; }}
+QLabel#UpdateNotes {{ color: {INK_MUTED}; font-size: 12px; }}
+QPushButton#UpdateDownload {{
+    padding: 6px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    min-height: 0;
+}}
+/* The dismiss ✕. Flat, so the strip reads as a notice and not as a toolbar. */
+QPushButton#BannerClose {{
+    background: transparent;
+    color: {INK_MUTED};
+    border: none;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 14px;
+    min-height: 0;
+}}
+QPushButton#BannerClose:hover {{ background: #D7E6EF; color: {INK}; }}
+
+/* ---------- Setup checklist ---------- */
+
+QLabel#SetupState {{ font-size: 19px; font-weight: 700; }}
+QLabel#SetupState[state="ready"]   {{ color: {SUCCESS}; }}
+QLabel#SetupState[state="pending"] {{ color: {DANGER}; }}
+QLabel#SetupCounts {{ color: {INK_MUTED}; font-size: 12.5px; }}
+
+/* One check. Same ground as the panel it sits in, with a hairline between
+   rows -- stated rather than inherited, for the dark-mode reason above. */
+QFrame#SetupRow {{
+    background: {SURFACE};
+    border: none;
+    border-bottom: 1px solid {LINE};
+}}
+QFrame#SetupRow[last="true"] {{ border-bottom: none; }}
+/* The tick or the warning mark, coloured by how much the gap costs. */
+QLabel#SetupMark {{ font-size: 14px; font-weight: 700; }}
+QLabel#SetupMark[level="ok"]       {{ color: {SUCCESS}; }}
+QLabel#SetupMark[level="blocking"] {{ color: {DANGER}; }}
+QLabel#SetupMark[level="advised"]  {{ color: {WARN}; }}
+QLabel#SetupMark[level="optional"] {{ color: {INK_MUTED}; }}
+QLabel#SetupItem {{ color: {INK}; font-size: 13.5px; font-weight: 600; }}
+QLabel#SetupDetail {{ color: {INK_MUTED}; font-size: 12px; }}
+QLabel#SetupCatalogue {{ color: {INK}; font-size: 13px; }}
 """

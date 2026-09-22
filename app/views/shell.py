@@ -27,7 +27,9 @@ from app.views.orders import OrdersView
 from app.views.requests import RequestsView
 from app.views.salary import SalaryView
 from app.views.settings import SettingsView
+from app.views.setup import SetupView
 from app.views.stock import StockView
+from app.views.update_banner import UpdateBanner
 from app.views.users import UsersView
 from app.views.warehouses import WarehousesView
 
@@ -46,6 +48,9 @@ SECTIONS = [
     ('salary', 'Salary', {'manager', 'office'}),
     ('requests', 'Requests', {'manager', 'office'}),
     ('settings', 'Settings', {'manager', 'office'}),
+    # Last, and only for the people who can act on it: it names what is and is
+    # not configured, which is nobody else's business.
+    ('setup', 'Setup', {'manager', 'office'}),
 ]
 
 
@@ -156,11 +161,21 @@ class Shell(QWidget):
 
         self.stack = QStackedWidget()
 
+        # The update strip sits over the pages rather than over the whole
+        # window, so the sidebar stays a single unbroken column.
+        self.update_banner = UpdateBanner()
+        content = QWidget(objectName='Canvas')
+        column = QVBoxLayout(content)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(0)
+        column.addWidget(self.update_banner)
+        column.addWidget(self.stack, 1)
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self.sidebar)
-        layout.addWidget(self.stack, 1)
+        layout.addWidget(content, 1)
 
     def _open_notifications(self):
         from app.views.notifications import NotificationsPanel
@@ -248,7 +263,22 @@ class Shell(QWidget):
             view = SettingsView(self.api, self.session)
             view.language_changed.connect(self.language_changed)
             return view
+        if key == 'setup':
+            # can_open is asked at render time, once every section exists, so a
+            # row only offers a jump to a page this role actually has.
+            view = SetupView(self.api, self.session,
+                             can_open=lambda k: k in self.buttons)
+            view.navigate.connect(self._navigate_to)
+            return view
         return PlaceholderView(label)
+
+    def apply_update_notice(self, update):
+        """Show or hide the "a new version is available" strip.
+
+        Fed the `update` block from /api/config/, which main.py already fetches
+        at sign-in. None or a null desktop release means nothing is said.
+        """
+        self.update_banner.apply(update)
 
     def _navigate_to(self, key):
         """Jump to a section from elsewhere (e.g. a dashboard tile)."""
@@ -283,6 +313,7 @@ class Shell(QWidget):
 
     def retranslate(self):
         self.sign_out.setText(t('Sign out'))
+        self.update_banner.retranslate()
         # Built once with the startup language, so without this the tagline
         # under the wordmark stayed in whatever language the app opened in.
         self.brand_sub.setText(t('Aluminium profiles'))
