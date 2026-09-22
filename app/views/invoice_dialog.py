@@ -382,19 +382,34 @@ class InvoiceDialog(QDialog):
         self.error.show()
 
     def _send_whatsapp(self):
-        # WhatsApp from the desktop can only carry text, so send a summary and a
-        # note that the PDF follows by email. The number is optional.
-        from urllib.parse import quote
-        from PySide6.QtCore import QUrl
-        from PySide6.QtGui import QDesktopServices
+        """Send the invoice as a link to the document.
 
-        inv = self.invoice or {}
-        label = f"{inv.get('number') or ''}".strip()
-        total = inv.get('total') or self.sp_total.value()
-        party = inv.get('client_name') or inv.get('party_name') or ''
-        text = t('Invoice {number} for {party}: ₪ {total}. The PDF follows by '
-                 'email.').format(number=label, party=party, total=total)
-        QDesktopServices.openUrl(QUrl(f'https://wa.me/?text={quote(text)}'))
+        It used to send a typed summary ending "the PDF follows by email",
+        which is no use when email is not set up and not much use when it is.
+        The server makes a login-free link to the file and words the message;
+        WhatsApp opens with the client's number already in it.
+        """
+        from app.share import send_by_whatsapp
+
+        invoice_id = (self.invoice or {}).get('id')
+        if not invoice_id:
+            self.error.setObjectName('FieldError')
+            self.error.setText(t('Save the invoice first, then send it.'))
+            self.error.show()
+            return
+        self.whatsapp_btn.setEnabled(False)
+
+        def done(_payload):
+            self.whatsapp_btn.setEnabled(True)
+
+        def failed(err):
+            self.whatsapp_btn.setEnabled(True)
+            self.error.setObjectName('FieldError')
+            self.error.setText(err.message)
+            self.error.show()
+
+        send_by_whatsapp(self.api, invoice_id, 'invoice',
+                         on_done=done, on_error=failed)
 
     def _on_error(self, error):
         self.save_btn.setEnabled(True)

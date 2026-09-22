@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.i18n import t
-from app.share import KINDS as SHARE_KINDS, send_by_whatsapp
+from app.share import ORDER_KINDS as SHARE_KINDS, send_by_whatsapp
 
 KINDS = [('drawing', 'Drawing'), ('other', 'Other')]
 
